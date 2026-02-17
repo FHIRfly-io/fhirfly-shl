@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 import type { SHLOptions, SHLResult, Manifest, SHLMetadata } from "./types.js";
 import { ValidationError, StorageError, EncryptionError } from "../errors.js";
 import { generateKey, generateShlId, encryptBundle, base64url } from "./crypto.js";

@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { LocalStorage } from "../shl/storage.js";

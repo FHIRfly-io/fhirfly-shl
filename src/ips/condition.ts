@@ -1,9 +1,12 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 /**
  * Internal condition resolution — converts condition input variants
  * into resolved conditions and then into FHIR Condition resources.
  */
 
 import { CODE_SYSTEMS } from "./code-systems.js";
+import { conditionNarrative } from "./narrative.js";
 import type {
   ConditionOptions,
   ConditionByICD10,
@@ -284,6 +287,11 @@ function buildCondition(
   if (resolved.onsetDate) {
     resource.onsetDateTime = resolved.onsetDate;
   }
+
+  resource.text = {
+    status: "generated",
+    div: conditionNarrative(resolved.text, resolved.clinicalStatus, resolved.onsetDate),
+  };
 
   return resource;
 }

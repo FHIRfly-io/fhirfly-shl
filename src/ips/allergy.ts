@@ -1,9 +1,12 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 /**
  * Internal allergy resolution — converts allergy input variants
  * into resolved allergies and then into FHIR AllergyIntolerance resources.
  */
 
 import { CODE_SYSTEMS } from "./code-systems.js";
+import { allergyNarrative } from "./narrative.js";
 import type {
   AllergyOptions,
   AllergyBySNOMED,
@@ -195,6 +198,11 @@ function buildAllergyIntolerance(
   if (resolved.criticality) {
     resource.criticality = resolved.criticality;
   }
+
+  resource.text = {
+    status: "generated",
+    div: allergyNarrative(resolved.text, resolved.clinicalStatus, resolved.criticality),
+  };
 
   return resource;
 }

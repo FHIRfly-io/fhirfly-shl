@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 /** Well-known FHIR code system URIs used across IPS resource generation. */
 export const CODE_SYSTEMS = {
   NDC: "http://hl7.org/fhir/sid/ndc",
