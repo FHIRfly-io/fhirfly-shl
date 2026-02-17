@@ -1,0 +1,137 @@
+{
+  "name": "@fhirfly-io/shl",
+  "version": "0.1.0",
+  "description": "Official FHIRfly SDK for SMART Health Links - IPS bundle creation and SHL sharing",
+  "author": "FHIRfly.io LLC <admin@fhirfly.io>",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://fhirfly.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FHIRfly-io/fhirfly-shl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FHIRfly-io/fhirfly-shl/issues"
+  },
+  "keywords": [
+    "fhirfly",
+    "healthcare",
+    "smart-health-links",
+    "shl",
+    "ips",
+    "fhir",
+    "patient-summary",
+    "health-records",
+    "qr-code",
+    "clinical",
+    "middleware",
+    "express",
+    "fastify",
+    "lambda"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./server": {
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
+      },
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      }
+    },
+    "./express": {
+      "require": {
+        "types": "./dist/express.d.cts",
+        "default": "./dist/express.cjs"
+      },
+      "import": {
+        "types": "./dist/express.d.ts",
+        "default": "./dist/express.js"
+      }
+    },
+    "./fastify": {
+      "require": {
+        "types": "./dist/fastify.d.cts",
+        "default": "./dist/fastify.cjs"
+      },
+      "import": {
+        "types": "./dist/fastify.d.ts",
+        "default": "./dist/fastify.js"
+      }
+    },
+    "./lambda": {
+      "require": {
+        "types": "./dist/lambda.d.cts",
+        "default": "./dist/lambda.cjs"
+      },
+      "import": {
+        "types": "./dist/lambda.d.ts",
+        "default": "./dist/lambda.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "test:validate:setup": "bash tests/fhir-validate/setup-validator.sh",
+    "test:validate": "npm run test:validate:setup && vitest run tests/fhir-validate/",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "express": "^4.0.0 || ^5.0.0",
+    "fastify": "^4.0.0 || ^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@fhirfly-io/terminology": "^0.5.0",
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.0",
+    "eslint": "^9.0.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.0.0"
+  }
+}
