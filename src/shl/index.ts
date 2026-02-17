@@ -1,7 +1,7 @@
 // Copyright 2026 FHIRfly.io LLC. All rights reserved.
 // Licensed under the MIT License. See LICENSE file in the project root.
 export { create } from "./create.js";
-export { decode, decrypt } from "./decode.js";
+export { decode, decrypt, decryptContent } from "./decode.js";
 export { revoke } from "./revoke.js";
 export type { DecodedSHL } from "./decode.js";
 export { S3Storage, LocalStorage } from "./storage.js";
@@ -11,6 +11,7 @@ export type {
   SHLResult,
   SHLStorage,
   SHLMetadata,
+  SHLAttachment,
   ManifestEntry,
   Manifest,
 } from "./types.js";

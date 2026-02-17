@@ -6,6 +6,8 @@
 export interface SHLOptions {
   /** The FHIR Bundle to share (as a JSON object) */
   bundle: Record<string, unknown>;
+  /** Additional files to include (e.g., PDF documents, SMART Health Cards) */
+  attachments?: SHLAttachment[];
   /** Optional passcode to protect the link */
   passcode?: string;
   /** Expiration date for the link */
@@ -18,6 +20,16 @@ export interface SHLOptions {
   storage: SHLStorage;
   /** Save unencrypted bundle alongside encrypted JWE (development only — do not use in production) */
   debug?: boolean;
+}
+
+/**
+ * An additional file to include in the SHL manifest.
+ */
+export interface SHLAttachment {
+  /** MIME content type (e.g., "application/pdf") */
+  contentType: string;
+  /** File content — string for text, Uint8Array for binary */
+  content: string | Uint8Array;
 }
 
 /**
@@ -42,8 +54,8 @@ export interface SHLResult {
  * SHL manifest file entry.
  */
 export interface ManifestEntry {
-  /** MIME type of the content */
-  contentType: "application/fhir+json" | "application/smart-health-card";
+  /** MIME type of the content (e.g., "application/fhir+json", "application/pdf") */
+  contentType: string;
   /** URL to retrieve the content */
   location?: string;
   /** Embedded content (base64url-encoded if encrypted) */

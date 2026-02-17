@@ -69,6 +69,60 @@ export function encryptBundle(
 }
 
 /**
+ * Encrypt arbitrary content as a JWE compact serialization.
+ *
+ * Uses `alg: "dir"`, `enc: "A256GCM"`, `zip: "DEF"`.
+ * The `contentType` is stored in the JWE `cty` header so the
+ * recipient knows how to interpret the decrypted payload.
+ *
+ * Pipeline: content bytes → deflateRaw → AES-256-GCM → JWE compact
+ */
+export function encryptContent(
+  data: Buffer,
+  key: Buffer,
+  contentType: string,
+): string {
+  const compressed = deflateRawSync(data);
+  const header = { alg: "dir", enc: "A256GCM", cty: contentType, zip: "DEF" };
+  const headerB64 = base64url(Buffer.from(JSON.stringify(header), "utf8"));
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(headerB64, "ascii"));
+  const ciphertext = Buffer.concat([cipher.update(compressed), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${headerB64}..${base64url(iv)}.${base64url(ciphertext)}.${base64url(tag)}`;
+}
+
+/**
+ * Decrypt a JWE compact serialization to raw bytes and content type.
+ *
+ * Pipeline: parse JWE → AES-256-GCM decrypt → inflateRaw → Buffer
+ */
+export function decryptContent(
+  jwe: string,
+  key: Buffer,
+): { contentType: string; data: Buffer } {
+  const parts = jwe.split(".");
+  if (parts.length !== 5) {
+    throw new Error(`Invalid JWE compact serialization: expected 5 parts, got ${parts.length}`);
+  }
+  const [headerB64, , ivB64, ciphertextB64, tagB64] = parts as [string, string, string, string, string];
+  const header = JSON.parse(base64urlDecode(headerB64!).toString("utf8")) as Record<string, string>;
+  if (header["alg"] !== "dir" || header["enc"] !== "A256GCM") {
+    throw new Error(`Unsupported JWE: alg=${header["alg"]}, enc=${header["enc"]}`);
+  }
+  const iv = base64urlDecode(ivB64!);
+  const ciphertext = base64urlDecode(ciphertextB64!);
+  const tag = base64urlDecode(tagB64!);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAAD(Buffer.from(headerB64!, "ascii"));
+  decipher.setAuthTag(tag);
+  const compressed = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  const data = header["zip"] === "DEF" ? inflateRawSync(compressed) : compressed;
+  return { contentType: header["cty"] ?? "application/octet-stream", data: Buffer.from(data) };
+}
+
+/**
  * Decrypt a JWE compact serialization back to a FHIR bundle.
  *
  * Pipeline: parse JWE → AES-256-GCM decrypt → inflateRaw → JSON.parse

@@ -50,12 +50,21 @@ export function createHandler(
       return handleContent(segments[0]!, storage);
     }
 
+    // Route: GET /{shlId}/attachment/{index} → serve encrypted attachment
+    if (segments.length === 3 && segments[1] === "attachment" && req.method === "GET") {
+      const index = segments[2]!;
+      return handleAttachment(segments[0]!, index, storage);
+    }
+
     // Method not allowed for known paths
     if (segments.length === 1 && req.method !== "POST") {
       return jsonResponse(405, { error: "Method not allowed. Use POST for manifest requests." });
     }
     if (segments.length === 2 && segments[1] === "content" && req.method !== "GET") {
       return jsonResponse(405, { error: "Method not allowed. Use GET for content requests." });
+    }
+    if (segments.length === 3 && segments[1] === "attachment" && req.method !== "GET") {
+      return jsonResponse(405, { error: "Method not allowed. Use GET for attachment requests." });
     }
 
     return jsonResponse(404, { error: "Not found" });
@@ -161,6 +170,31 @@ async function handleContent(
     ? content
     : new TextDecoder().decode(content);
 
+  return {
+    status: 200,
+    headers: {
+      "content-type": "application/jose",
+      "cache-control": "no-store",
+    },
+    body,
+  };
+}
+
+async function handleAttachment(
+  shlId: string,
+  index: string,
+  storage: SHLHandlerConfig["storage"],
+): Promise<HandlerResponse> {
+  if (!/^\d+$/.test(index)) {
+    return jsonResponse(400, { error: "Invalid attachment index" });
+  }
+  const content = await storage.read(`${shlId}/attachment-${index}.jwe`);
+  if (content === null) {
+    return jsonResponse(404, { error: "Attachment not found" });
+  }
+  const body = typeof content === "string"
+    ? content
+    : new TextDecoder().decode(content);
   return {
     status: 200,
     headers: {

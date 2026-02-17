@@ -1,6 +1,6 @@
 // Copyright 2026 FHIRfly.io LLC. All rights reserved.
 // Licensed under the MIT License. See LICENSE file in the project root.
-import { base64urlDecode, decryptBundle } from "./crypto.js";
+import { base64urlDecode, decryptBundle, decryptContent as rawDecryptContent } from "./crypto.js";
 import { ValidationError, EncryptionError } from "../errors.js";
 
 /**
@@ -132,6 +132,36 @@ export function decrypt(
     if (err instanceof EncryptionError) throw err;
     throw new EncryptionError(
       `Failed to decrypt: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * Decrypt a JWE compact serialization to raw bytes and content type.
+ *
+ * Use this for non-FHIR content (PDFs, images, etc.) where the result
+ * is binary data rather than a JSON object.
+ *
+ * @param jwe - JWE compact serialization string
+ * @param key - 32-byte AES-256 key (from `SHL.decode().key`)
+ * @returns Object with `contentType` (from JWE header) and `data` (Buffer)
+ */
+export function decryptContent(
+  jwe: string,
+  key: Buffer,
+): { contentType: string; data: Buffer } {
+  if (!jwe || typeof jwe !== "string") {
+    throw new EncryptionError("jwe is required and must be a string");
+  }
+  if (!Buffer.isBuffer(key) || key.length !== 32) {
+    throw new EncryptionError("key must be a 32-byte Buffer");
+  }
+  try {
+    return rawDecryptContent(jwe, key);
+  } catch (err) {
+    if (err instanceof EncryptionError) throw err;
+    throw new EncryptionError(
+      `Failed to decrypt content: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

@@ -2,7 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 import type { SHLOptions, SHLResult, Manifest, SHLMetadata } from "./types.js";
 import { ValidationError, StorageError, EncryptionError } from "../errors.js";
-import { generateKey, generateShlId, encryptBundle, base64url } from "./crypto.js";
+import { generateKey, generateShlId, encryptBundle, encryptContent, base64url } from "./crypto.js";
 import { generateQRCode } from "./qrcode.js";
 
 /**
@@ -85,6 +85,31 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
     );
   }
 
+  // Encrypt and store attachments
+  const attachments = options.attachments ?? [];
+  for (let i = 0; i < attachments.length; i++) {
+    const att = attachments[i]!;
+    const attData = typeof att.content === "string"
+      ? Buffer.from(att.content, "utf8")
+      : Buffer.from(att.content);
+    let attJwe: string;
+    try {
+      attJwe = encryptContent(attData, key, att.contentType);
+    } catch (err) {
+      throw new EncryptionError(
+        `Failed to encrypt attachment ${i}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    try {
+      await storage.store(`${shlId}/attachment-${i}.jwe`, attJwe);
+    } catch (err) {
+      throw new StorageError(
+        `Failed to store attachment ${i}: ${err instanceof Error ? err.message : String(err)}`,
+        "store",
+      );
+    }
+  }
+
   // Build and store manifest
   const manifest: Manifest = {
     files: [
@@ -92,6 +117,10 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
         contentType: "application/fhir+json",
         location: `${baseUrl}/${shlId}/content`,
       },
+      ...attachments.map((att, i) => ({
+        contentType: att.contentType,
+        location: `${baseUrl}/${shlId}/attachment/${i}`,
+      })),
     ],
   };
 
