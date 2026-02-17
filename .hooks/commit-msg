@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#
+# Commit-msg hook for FHIRfly public SDK repos.
+#
+# Checks:
+#   1. No Co-Authored-By Claude lines (project convention)
+#   2. Identity patterns not in commit message
+#
+# Setup: git config core.hooksPath .hooks
+#
+
+set -e
+
+RED='\033[0;31m'
+NC='\033[0m'
+
+MSG_FILE="$1"
+FAILED=0
+
+# --- 1. No Co-Authored-By Claude ---
+if grep -iq "Co-Authored-By:.*Claude" "$MSG_FILE"; then
+  echo -e "${RED}BLOCKED: Commit message contains Co-Authored-By Claude line.${NC}"
+  echo -e "${RED}Project convention: do not include Co-Authored-By in public SDK commits.${NC}"
+  FAILED=1
+fi
+
+# --- 2. Identity patterns in commit message ---
+BLOCKLIST=""
+for candidate in ".identity-blocklist" "../.config/identity-blocklist"; do
+  if [ -f "$candidate" ]; then
+    BLOCKLIST="$candidate"
+    break
+  fi
+done
+
+if [ -n "$BLOCKLIST" ]; then
+  PATTERNS=$(grep -v '^\s*#' "$BLOCKLIST" | grep -v '^\s*$' | paste -sd'|' -)
+  if [ -n "$PATTERNS" ] && grep -iEq "$PATTERNS" "$MSG_FILE"; then
+    echo -e "${RED}BLOCKED: Commit message contains identity patterns.${NC}"
+    FAILED=1
+  fi
+fi
+
+if [ $FAILED -ne 0 ]; then
+  exit 1
+fi
