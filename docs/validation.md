@@ -128,7 +128,6 @@ The validator outputs issues with severity levels:
 
 | Warning | Why it's OK |
 |---------|-------------|
-| `dom-6: A resource should have narrative...` | The SDK doesn't generate `text.div` narrative. Viewers render from structured data. |
 | `Composition.section: minimum required = 3...` | IPS requires medication, allergy, and problem sections. If your bundle has all three, this is a false positive from section ordering. |
 | `Unable to resolve resource...` | The validator can't follow `fullUrl` references. If your bundle works end-to-end, this is fine. |
 
