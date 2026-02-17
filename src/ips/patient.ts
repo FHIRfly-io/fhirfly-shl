@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 /**
  * Internal patient normalization — converts shorthand or full FHIR-shaped
  * patient input into a FHIR R4 Patient resource object.
@@ -5,6 +7,7 @@
 
 import type { PatientDemographics, PatientFull, PatientShorthand } from "./types.js";
 import type { HumanName, ContactPoint, Identifier } from "./fhir-types.js";
+import { patientNarrative } from "./narrative.js";
 
 /**
  * Type guard: returns true if the input is a full FHIR-shaped patient.
@@ -79,6 +82,14 @@ function buildFromShorthand(
     patient.identifier = [ident];
   }
 
+  const displayName = (input.name
+    ?? [input.given, input.family].filter(Boolean).join(" "))
+    || undefined;
+  patient.text = {
+    status: "generated",
+    div: patientNarrative(displayName, input.birthDate, input.gender),
+  };
+
   return patient;
 }
 
@@ -119,6 +130,15 @@ function buildFromFull(
       patient.deceasedDateTime = input.deceased;
     }
   }
+
+  const first = input.name[0];
+  const displayName = first
+    ? (first.text ?? [first.given?.join(" "), first.family].filter(Boolean).join(" ")) || undefined
+    : undefined;
+  patient.text = {
+    status: "generated",
+    div: patientNarrative(displayName, input.birthDate, input.gender),
+  };
 
   return patient;
 }

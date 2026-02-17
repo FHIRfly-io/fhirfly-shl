@@ -1,9 +1,12 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 /**
  * Internal medication resolution — converts the 5 medication input variants
  * into resolved medications and then into FHIR MedicationStatement resources.
  */
 
 import { CODE_SYSTEMS } from "./code-systems.js";
+import { medicationNarrative } from "./narrative.js";
 import type {
   MedicationOptions,
   MedicationByNDC,
@@ -354,6 +357,11 @@ function buildMedicationStatement(
   if (resolved.dosageText) {
     resource.dosage = [{ text: resolved.dosageText }];
   }
+
+  resource.text = {
+    status: "generated",
+    div: medicationNarrative(resolved.text, resolved.dosageText, resolved.effectiveDate),
+  };
 
   return resource;
 }

@@ -1,9 +1,12 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 /**
  * Internal immunization resolution — converts immunization input variants
  * into resolved immunizations and then into FHIR Immunization resources.
  */
 
 import { CODE_SYSTEMS } from "./code-systems.js";
+import { immunizationNarrative } from "./narrative.js";
 import type {
   ImmunizationOptions,
   ImmunizationByCVX,
@@ -181,6 +184,11 @@ function buildImmunization(
   if (resolved.occurrenceDate) {
     resource.occurrenceDateTime = resolved.occurrenceDate;
   }
+
+  resource.text = {
+    status: "generated",
+    div: immunizationNarrative(resolved.text, resolved.status, resolved.occurrenceDate),
+  };
 
   return resource;
 }
