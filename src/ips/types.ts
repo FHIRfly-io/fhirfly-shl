@@ -220,6 +220,19 @@ export interface FhirflyClient {
       };
     }>;
   };
+  loinc: {
+    lookup(loincNum: string, options?: { shape?: string }): Promise<{
+      data: {
+        loinc_num: string;
+        component: string;
+        long_common_name: string;
+        class: string;
+        system?: string;
+        scale_typ?: string;
+        units?: string;
+      };
+    }>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -492,4 +505,95 @@ export interface ResolvedImmunization {
   status: "completed" | "not-done";
   occurrenceDate?: string;
   originalResource?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Result input types (discriminated union)
+// ---------------------------------------------------------------------------
+
+/** Observation status values */
+export type ObservationStatus = "registered" | "preliminary" | "final" | "amended" | "corrected" | "cancelled" | "entered-in-error" | "unknown";
+
+/** Common result fields shared across all result input variants. */
+interface ResultCommon {
+  /** Numeric result value */
+  value?: number;
+  /** Unit of measurement (e.g., "mg/dL", "mmol/L") */
+  unit?: string;
+  /** UCUM unit code (e.g., "mg/dL") — defaults to `unit` if not provided */
+  unitCode?: string;
+  /** Reference range for interpretation */
+  referenceRange?: { low?: number; high?: number; unit?: string };
+  /** When the observation was made (YYYY-MM-DD) */
+  effectiveDate?: string;
+  /** Observation status */
+  status?: ObservationStatus;
+  /** String result value (for non-numeric results like "Positive", "Negative") */
+  valueString?: string;
+}
+
+/** Add a result by LOINC code. Requires FHIRfly API for enrichment. */
+export interface ResultByLOINC extends ResultCommon {
+  byLOINC: string;
+  fhirfly: FhirflyClient;
+  fromResource?: never;
+  code?: never;
+}
+
+/** Pass through an existing Observation resource. */
+export interface ResultFromResource {
+  fromResource: Record<string, unknown>;
+  fhirfly?: FhirflyClient;
+  byLOINC?: never;
+  code?: never;
+}
+
+/** Manual result input with code, system, and display. */
+export interface ResultManual extends ResultCommon {
+  code: string;
+  system: string;
+  display: string;
+  byLOINC?: never;
+  fromResource?: never;
+  fhirfly?: never;
+}
+
+/** Union of all result input variants. */
+export type ResultOptions =
+  | ResultByLOINC
+  | ResultFromResource
+  | ResultManual;
+
+/** Internal representation of a resolved result, ready for FHIR generation. */
+export interface ResolvedResult {
+  codings: ResolvedCoding[];
+  text?: string;
+  status: ObservationStatus;
+  value?: number;
+  valueString?: string;
+  unit?: string;
+  unitCode?: string;
+  referenceRange?: { low?: number; high?: number; unit?: string };
+  effectiveDate?: string;
+  originalResource?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Document input types
+// ---------------------------------------------------------------------------
+
+/** Options for adding a document (PDF, TIFF, JPG, etc.) to the IPS bundle. */
+export interface DocumentOptions {
+  /** Document title (e.g., "Lab Report", "Discharge Summary") */
+  title: string;
+  /** Document content as binary data */
+  content: Buffer | Uint8Array;
+  /** MIME content type (defaults to "application/pdf") */
+  contentType?: string;
+  /** Document date (YYYY-MM-DD, defaults to today) */
+  date?: string;
+  /** LOINC document type code (defaults to "34133-9" Summarization of episode note) */
+  typeCode?: string;
+  /** Display name for the LOINC type code */
+  typeDisplay?: string;
 }

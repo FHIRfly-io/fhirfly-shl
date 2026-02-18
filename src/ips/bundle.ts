@@ -9,12 +9,16 @@ import type {
   AllergyOptions,
   ConditionOptions,
   ImmunizationOptions,
+  ResultOptions,
+  DocumentOptions,
 } from "./types.js";
 import { normalizePatient, isPatientFull } from "./patient.js";
 import { resolveMedications, validateFromResource } from "./medication.js";
 import { resolveConditions, validateConditionFromResource } from "./condition.js";
 import { resolveAllergies, validateAllergyFromResource } from "./allergy.js";
 import { resolveImmunizations, validateImmunizationFromResource } from "./immunization.js";
+import { resolveResults, validateResultFromResource } from "./result.js";
+import { resolveDocuments } from "./document.js";
 
 /**
  * Builder for creating IPS (International Patient Summary) FHIR bundles.
@@ -44,6 +48,8 @@ export class Bundle {
   private readonly _allergies: AllergyOptions[] = [];
   private readonly _conditions: ConditionOptions[] = [];
   private readonly _immunizations: ImmunizationOptions[] = [];
+  private readonly _results: ResultOptions[] = [];
+  private readonly _documents: DocumentOptions[] = [];
   private readonly _warnings: ValidationIssue[] = [];
   private _buildWarnings: ValidationIssue[] = [];
 
@@ -185,6 +191,46 @@ export class Bundle {
   }
 
   /**
+   * Add a lab result (Observation) to the IPS bundle.
+   *
+   * Throws immediately for `fromResource` with wrong resourceType.
+   */
+  addResult(result: ResultOptions): this {
+    if ("fromResource" in result && result.fromResource !== undefined) {
+      validateResultFromResource(result.fromResource);
+
+      const resource = result.fromResource;
+      if (!resource.status) {
+        this._warnings.push({
+          severity: "warning",
+          message: `fromResource missing "status" — will default to "final"`,
+          path: "Observation.status",
+        });
+      }
+      if (!resource.code) {
+        this._warnings.push({
+          severity: "warning",
+          message: `fromResource missing "code"`,
+          path: "Observation.code",
+        });
+      }
+    }
+
+    this._results.push(result);
+    return this;
+  }
+
+  /**
+   * Add a document (PDF, TIFF, etc.) to the IPS bundle.
+   *
+   * The document is wrapped as a DocumentReference + Binary resource pair.
+   */
+  addDocument(document: DocumentOptions): this {
+    this._documents.push(document);
+    return this;
+  }
+
+  /**
    * Build the IPS FHIR Bundle resource.
    *
    * Async because `byNDC`, `byRxNorm`, `byICD10`, and `byCVX` require API enrichment.
@@ -206,18 +252,23 @@ export class Bundle {
     const patientResource = normalizePatient(this._patient, patientId, profile);
 
     // Resolve all resource types
-    const [medResult, condResult, allergyResult, immResult] = await Promise.all([
+    const [medResult, condResult, allergyResult, immResult, resultResult] = await Promise.all([
       resolveMedications(this._medications, patientFullUrl, profile, generateUuid),
       resolveConditions(this._conditions, patientFullUrl, profile, generateUuid),
       resolveAllergies(this._allergies, patientFullUrl, profile, generateUuid),
       resolveImmunizations(this._immunizations, patientFullUrl, profile, generateUuid),
+      resolveResults(this._results, patientFullUrl, profile, generateUuid),
     ]);
+
+    // Resolve documents (synchronous — no API calls)
+    const docResult = resolveDocuments(this._documents, patientFullUrl, profile, generateUuid);
 
     this._buildWarnings = [
       ...medResult.warnings,
       ...condResult.warnings,
       ...allergyResult.warnings,
       ...immResult.warnings,
+      ...resultResult.warnings,
     ];
 
     // Build section references for the Composition
@@ -225,6 +276,7 @@ export class Bundle {
     const condRefs = condResult.entries.map((e) => ({ reference: e.fullUrl }));
     const allergyRefs = allergyResult.entries.map((e) => ({ reference: e.fullUrl }));
     const immRefs = immResult.entries.map((e) => ({ reference: e.fullUrl }));
+    const resultRefs = resultResult.entries.map((e) => ({ reference: e.fullUrl }));
 
     // Build Composition resource
     const composition = this.buildComposition(
@@ -236,6 +288,7 @@ export class Bundle {
       allergyRefs,
       condRefs,
       immRefs,
+      resultRefs,
     );
 
     // Assemble Bundle: Composition, Patient, then clinical entries
@@ -246,6 +299,8 @@ export class Bundle {
       ...condResult.entries,
       ...allergyResult.entries,
       ...immResult.entries,
+      ...resultResult.entries,
+      ...docResult.entries,
     ];
 
     const bundle: Record<string, unknown> = {
@@ -342,6 +397,17 @@ export class Bundle {
           });
         }
       }
+
+      // Check results for missing effectiveDate
+      for (const result of this._results) {
+        if (!("fromResource" in result && result.fromResource !== undefined) && !("effectiveDate" in result && result.effectiveDate)) {
+          issues.push({
+            severity: "information",
+            message: "Result has no effectiveDate — recommended by IPS but not required",
+            path: "Observation.effectiveDateTime",
+          });
+        }
+      }
     }
 
     return {
@@ -371,6 +437,7 @@ export class Bundle {
     allergyRefs: Array<{ reference: string }>,
     condRefs: Array<{ reference: string }>,
     immRefs: Array<{ reference: string }>,
+    resultRefs: Array<{ reference: string }>,
   ): Record<string, unknown> {
     const composition: Record<string, unknown> = {
       resourceType: "Composition",
@@ -409,6 +476,11 @@ export class Bundle {
       // (it's not one of the 3 required IPS sections)
       if (immRefs.length > 0) {
         sections.push(this.buildImmunizationSection(immRefs));
+      }
+
+      // Results section is only included when there are entries
+      if (resultRefs.length > 0) {
+        sections.push(this.buildResultSection(resultRefs));
       }
 
       composition.section = sections;
@@ -466,6 +538,19 @@ export class Bundle {
       "History of Immunization note",
       immRefs,
       "immunization",
+    );
+  }
+
+  private buildResultSection(
+    resultRefs: Array<{ reference: string }>,
+  ): Record<string, unknown> {
+    return this.buildDynamicSection(
+      "Results",
+      "http://loinc.org",
+      "30954-2",
+      "Relevant diagnostic tests/laboratory data Narrative",
+      resultRefs,
+      "result",
     );
   }
 

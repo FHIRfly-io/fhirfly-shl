@@ -1,6 +1,6 @@
 # @fhirfly-io/shl
 
-SMART Health Links SDK for Node.js — build FHIR Bundles from clinical codes, enrich with terminology, encrypt, and share via SHL/QR code.
+SMART Health Links SDK for Node.js — build IPS FHIR Bundles from clinical codes, encrypt, and share via SHL/QR code.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
@@ -20,98 +20,130 @@ PHI never leaves your server. Only terminology codes are sent to FHIRfly for enr
 npm install @fhirfly-io/shl
 ```
 
+For FHIRfly API enrichment (recommended):
+
+```bash
+npm install @fhirfly-io/shl @fhirfly-io/terminology
+```
+
 ## Quick Start
 
 ```typescript
-import { IPS, SHL } from '@fhirfly-io/shl';
-import { Fhirfly } from '@fhirfly-io/terminology';
+import { IPS, SHL } from "@fhirfly-io/shl";
+import Fhirfly from "@fhirfly-io/terminology";
 
-const fhirfly = new Fhirfly({ apiKey: process.env.FHIRFLY_API_KEY });
+const client = new Fhirfly({ apiKey: process.env.FHIRFLY_API_KEY });
 
-// Build incrementally — each method is independently testable
-const ips = new IPS.Bundle({
-  patient: { name: 'Oliver Brown', dob: '1990-03-15', gender: 'male' },
+// Build the IPS Bundle
+const bundle = new IPS.Bundle({
+  patient: { name: "Maria Garcia", birthDate: "1985-03-15", gender: "female" },
 });
 
-ips.addMedication({ byNDC: '0069-3150-83', fhirfly });
-ips.addCondition({ byICD10: 'E11.9', fhirfly });
-ips.addImmunization({ byCVX: '207', fhirfly });
-ips.addResult({ byLOINC: '2339-0', value: 95, unit: 'mg/dL' });
-ips.addDocument({ pdf: pdfBuffer, title: 'Visit Summary' });
+bundle.addMedication({ byNDC: "00071015523", fhirfly: client.ndc });
+bundle.addCondition({ byICD10: "E11.9", fhirfly: client.icd10 });
+bundle.addAllergy({ bySNOMED: "387207008" });
+bundle.addImmunization({ byCVX: "208", fhirfly: client.cvx });
+bundle.addResult({ byLOINC: "2339-0", fhirfly: client.loinc, value: 95, unit: "mg/dL" });
+bundle.addDocument({ content: pdfBuffer, contentType: "application/pdf", title: "Visit Summary" });
 
-// Build with configurable output profile
-const bundle = await ips.build({ profile: 'ips' });  // or 'r4' for generic FHIR
+const fhirBundle = await bundle.build();
 
-// Validate — mandatory before packaging
-const validation = await bundle.validate();
+// Create the SHL (zero-infra with FhirflyStorage)
+const storage = new SHL.FhirflyStorage({ apiKey: process.env.FHIRFLY_API_KEY });
 
-// Package as SHL
-const shl = await SHL.create(bundle, {
-  storage: new SHL.S3Storage({ bucket: 'my-hipaa-bucket', region: 'us-east-1' }),
-  expiration: '30d',
-  passcode: { generate: true },
-  label: 'Medical Summary for Oliver Brown',
+const result = await SHL.create({
+  bundle: fhirBundle,
+  storage,
+  passcode: "1234",
+  label: "Maria's Health Summary",
 });
 
-console.log(shl.url);       // shlink:/eyJ1cmwiOiJodHRwczovL...
-console.log(shl.qrCode);    // Base64 PNG
-console.log(shl.passcode);  // Communicate out-of-band to patient
+console.log(result.url);      // shlink:/eyJ1cmwiOiJodHRwczovL...
+console.log(result.qrCode);   // data:image/png;base64,...
+console.log(result.passcode); // "1234"
 ```
 
-## Design Principles
+## Storage Adapters
 
-- **Composable methods** — small, testable `add*` methods that build up a Bundle incrementally
-- **Configurable output** — `build({ profile: "ips" })` for IPS document Bundles, `build({ profile: "r4" })` for generic FHIR collections
-- **Bring Your Own Storage** — developer controls where encrypted PHI lives (S3, Azure, GCS, local)
-- **Bring Your Own PDF** — SDK wraps pre-rendered PDFs as FHIR DocumentReference; you control rendering
-- **Validation as a gate** — `SHL.create()` refuses to package invalid Bundles
-- **Create-only for v1** — SHL creation; receiving/decoding is out of scope
+```typescript
+// FHIRfly hosted (zero infrastructure, recommended)
+new SHL.FhirflyStorage({ apiKey: "..." });
 
-## Output Profiles
+// AWS S3
+new SHL.S3Storage({ bucket: "my-bucket", region: "us-east-1", baseUrl: "https://shl.example.com" });
 
-| Profile | Bundle.type | Composition | Use Case |
-|---------|-------------|-------------|----------|
-| `"ips"` | `document` | Yes (with IPS sections) | Kill the Clipboard, patient portals |
-| `"r4"` | `collection` | No | Apps needing FHIR Bundles without IPS compliance |
+// Azure Blob Storage
+new SHL.AzureStorage({ container: "shl-data", connectionString: "...", baseUrl: "https://shl.example.com" });
+
+// Google Cloud Storage
+new SHL.GCSStorage({ bucket: "my-bucket", baseUrl: "https://shl.example.com" });
+
+// Local filesystem (development)
+new SHL.LocalStorage({ directory: "./shl-data", baseUrl: "http://localhost:3456/shl" });
+```
 
 ## Input Formats
 
 Each `add*` method supports multiple input formats:
 
 ```typescript
-// From raw codes (enriched via FHIRfly API)
-ips.addMedication({ byNDC: '0069-3150-83', fhirfly });
-ips.addMedication({ byRxNorm: '161', fhirfly });
+// From codes (enriched via FHIRfly API)
+bundle.addMedication({ byNDC: "00071015523", fhirfly: client.ndc });
+bundle.addMedication({ byRxNorm: "161", fhirfly: client.rxnorm });
+bundle.addCondition({ byICD10: "E11.9", fhirfly: client.icd10 });
+bundle.addResult({ byLOINC: "2339-0", fhirfly: client.loinc, value: 95, unit: "mg/dL" });
+bundle.addImmunization({ byCVX: "208", fhirfly: client.cvx });
 
 // From SNOMED (no API call needed)
-ips.addMedication({ bySNOMED: '376988009' });
+bundle.addMedication({ bySNOMED: "376988009" });
+bundle.addAllergy({ bySNOMED: "387207008" });
 
 // From existing FHIR R4 resources
-ips.addMedication({ fromResource: existingMedicationStatement });
+bundle.addMedication({ fromResource: existingMedicationStatement });
+bundle.addCondition({ fromResource: existingCondition });
+
+// Manual coding (no API dependency)
+bundle.addMedication({ code: "376988009", system: "http://snomed.info/sct", display: "Levothyroxine" });
 ```
 
-## Storage Adapters
+## CLI
+
+```bash
+npx @fhirfly-io/shl validate bundle.json   # Validate a FHIR Bundle
+npx @fhirfly-io/shl create bundle.json     # Create an SHL from a bundle
+npx @fhirfly-io/shl decode shlink:/eyJ...  # Decode an SHL URL
+npx @fhirfly-io/shl serve                  # Start a local SHL server
+npx @fhirfly-io/shl demo                   # Full round-trip demo
+```
+
+## Server Middleware
+
+Host your own SHL endpoints:
 
 ```typescript
-// AWS S3 (pre-signed URLs)
-new SHL.S3Storage({ bucket: 'my-bucket', region: 'us-east-1' });
+import express from "express";
+import { createShlMiddleware } from "@fhirfly-io/shl/express";
+import { ServerLocalStorage } from "@fhirfly-io/shl/server";
 
-// Azure Blob Storage (SAS tokens)
-new SHL.AzureStorage({ container: 'my-container', connectionString: '...' });
+const storage = new ServerLocalStorage({
+  directory: "./shl-data",
+  baseUrl: "http://localhost:3000/shl",
+});
 
-// Google Cloud Storage
-new SHL.GCSStorage({ bucket: 'my-bucket' });
-
-// Local filesystem (development/testing only)
-new SHL.LocalStorage({ directory: './shl-data' });
+const app = express();
+app.use("/shl", createShlMiddleware({ storage }));
+app.listen(3000);
 ```
+
+Also available for Fastify (`@fhirfly-io/shl/fastify`) and Lambda (`@fhirfly-io/shl/lambda`).
 
 ## Related
 
-- [@fhirfly-io/terminology](https://www.npmjs.com/package/@fhirfly-io/terminology) — FHIRfly terminology API SDK (required for code enrichment)
+- [@fhirfly-io/terminology](https://www.npmjs.com/package/@fhirfly-io/terminology) — FHIRfly terminology API SDK
 - [SMART Health Links Spec](https://docs.smarthealthit.org/smart-health-links/spec/)
 - [IPS Implementation Guide](https://build.fhir.org/ig/HL7/fhir-ips/)
-- [FHIRfly Documentation](https://fhirfly.io/docs)
+- [FHIRfly SHL Docs](https://fhirfly.io/docs/shl/overview)
+- [SHL Viewer](https://fhirfly.io/shl/viewer)
 
 ## License
 

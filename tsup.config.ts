@@ -7,6 +7,7 @@ export default defineConfig({
     express: "src/adapters/express.ts",
     fastify: "src/adapters/fastify.ts",
     lambda: "src/adapters/lambda.ts",
+    cli: "src/cli/index.ts",
   },
   format: ["cjs", "esm"],
   dts: true,
@@ -16,5 +17,5 @@ export default defineConfig({
   treeshake: true,
   minify: false,
   target: "node18",
-  external: ["@aws-sdk/client-s3"],
+  external: ["@aws-sdk/client-s3", "@azure/storage-blob", "@google-cloud/storage"],
 });

@@ -59,6 +59,38 @@ export function immunizationNarrative(
   return wrap(lines);
 }
 
+export function resultNarrative(
+  displayText: string | undefined,
+  value: number | undefined,
+  valueString: string | undefined,
+  unit: string | undefined,
+  effectiveDate: string | undefined,
+): string {
+  const lines: string[] = [];
+  lines.push(`<p><b>${esc(displayText ?? "Lab Result")}</b></p>`);
+  if (value !== undefined && unit) {
+    lines.push(`<p>Value: ${esc(String(value))} ${esc(unit)}</p>`);
+  } else if (value !== undefined) {
+    lines.push(`<p>Value: ${esc(String(value))}</p>`);
+  } else if (valueString !== undefined) {
+    lines.push(`<p>Value: ${esc(valueString)}</p>`);
+  }
+  if (effectiveDate) lines.push(`<p>Date: ${esc(effectiveDate)}</p>`);
+  return wrap(lines);
+}
+
+export function documentNarrative(
+  title: string,
+  contentType: string,
+  date: string | undefined,
+): string {
+  const lines: string[] = [];
+  lines.push(`<p><b>${esc(title)}</b></p>`);
+  lines.push(`<p>Type: ${esc(contentType)}</p>`);
+  if (date) lines.push(`<p>Date: ${esc(date)}</p>`);
+  return wrap(lines);
+}
+
 export function patientNarrative(
   name: string | undefined,
   birthDate: string,

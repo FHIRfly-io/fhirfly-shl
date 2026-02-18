@@ -2,8 +2,8 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { LocalStorage } from "../shl/storage.js";
-import type { LocalStorageConfig, S3StorageConfig } from "../shl/storage.js";
+import { LocalStorage, AzureStorage, GCSStorage } from "../shl/storage.js";
+import type { LocalStorageConfig, S3StorageConfig, AzureStorageConfig, GCSStorageConfig } from "../shl/storage.js";
 import type { SHLServerStorage } from "./types.js";
 import type { SHLMetadata } from "../shl/types.js";
 import { StorageError } from "../errors.js";
@@ -246,4 +246,235 @@ export class ServerS3Storage implements SHLServerStorage {
     if (key.endsWith(".json")) return "application/json";
     return "application/octet-stream";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Azure Blob Storage (Server)
+// ---------------------------------------------------------------------------
+
+// Minimal Azure interfaces for server-side operations
+interface AzureBlobModule {
+  BlobServiceClient: {
+    fromConnectionString(connectionString: string): AzureBlobServiceClient;
+  };
+}
+interface AzureBlobServiceClient {
+  getContainerClient(container: string): AzureContainerClient;
+}
+interface AzureContainerClient {
+  getBlockBlobClient(blobName: string): AzureBlockBlobClient;
+  listBlobsFlat(options?: { prefix?: string }): AsyncIterable<{ name: string }>;
+}
+interface AzureBlockBlobClient {
+  upload(content: Uint8Array | Buffer, contentLength: number, options?: Record<string, unknown>): Promise<unknown>;
+  deleteIfExists(): Promise<unknown>;
+  download(): Promise<{ readableStreamBody?: NodeJS.ReadableStream }>;
+}
+
+let _azureModule: AzureBlobModule | undefined;
+async function getAzureModule(): Promise<AzureBlobModule> {
+  if (_azureModule) return _azureModule;
+  try {
+    _azureModule = (await import("@azure/storage-blob")) as unknown as AzureBlobModule;
+    return _azureModule;
+  } catch {
+    throw new StorageError(
+      "@azure/storage-blob is required for ServerAzureStorage. Install it: npm install @azure/storage-blob",
+      "import",
+    );
+  }
+}
+
+/**
+ * Azure Blob Storage server storage for SMART Health Links.
+ *
+ * Extends the base `AzureStorage` with `read` and `updateMetadata`
+ * methods needed for serving SHLs.
+ *
+ * @example
+ * ```ts
+ * import { ServerAzureStorage } from "@fhirfly-io/shl/server";
+ *
+ * const storage = new ServerAzureStorage({
+ *   container: "shl-data",
+ *   connectionString: process.env.AZURE_STORAGE_CONNECTION_STRING!,
+ *   baseUrl: "https://shl.example.com",
+ * });
+ * ```
+ */
+export class ServerAzureStorage extends AzureStorage implements SHLServerStorage {
+  private _serverContainerClient?: AzureContainerClient;
+
+  constructor(config: AzureStorageConfig) {
+    super(config);
+  }
+
+  async read(key: string): Promise<string | Uint8Array | null> {
+    try {
+      const container = await this._getServerContainer();
+      const blobName = this._serverBlobName(key);
+      const client = container.getBlockBlobClient(blobName);
+
+      const response = await client.download();
+      if (!response.readableStreamBody) return null;
+
+      return await streamToString(response.readableStreamBody);
+    } catch (err) {
+      const code = (err as { statusCode?: number }).statusCode;
+      if (code === 404) return null;
+      if (err instanceof StorageError) throw err;
+      throw new StorageError(
+        `Failed to read ${key}: ${err instanceof Error ? err.message : String(err)}`,
+        "read",
+      );
+    }
+  }
+
+  async updateMetadata(
+    shlId: string,
+    updater: (current: SHLMetadata) => SHLMetadata | null,
+  ): Promise<SHLMetadata | null> {
+    const key = `${shlId}/metadata.json`;
+    const raw = await this.read(key);
+    if (raw === null) return null;
+
+    const current = JSON.parse(raw as string) as SHLMetadata;
+    const updated = updater(current);
+    if (updated === null) return null;
+
+    await this.store(key, JSON.stringify(updated));
+    return updated;
+  }
+
+  private async _getServerContainer(): Promise<AzureContainerClient> {
+    if (!this._serverContainerClient) {
+      const azure = await getAzureModule();
+      const serviceClient = azure.BlobServiceClient.fromConnectionString(this.config.connectionString);
+      this._serverContainerClient = serviceClient.getContainerClient(this.config.container);
+    }
+    return this._serverContainerClient;
+  }
+
+  private _serverBlobName(key: string): string {
+    const prefix = this.config.prefix?.replace(/\/+$/, "");
+    return prefix ? `${prefix}/${key}` : key;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Google Cloud Storage (Server)
+// ---------------------------------------------------------------------------
+
+// Minimal GCS interfaces for server-side operations
+interface GCSModule {
+  Storage: new () => GCSStorageClient;
+}
+interface GCSStorageClient {
+  bucket(name: string): GCSBucket;
+}
+interface GCSBucket {
+  file(name: string): GCSFile;
+  getFiles(options?: { prefix?: string }): Promise<[GCSFile[]]>;
+}
+interface GCSFile {
+  save(content: Buffer, options?: Record<string, unknown>): Promise<void>;
+  delete(options?: Record<string, unknown>): Promise<unknown>;
+  download(): Promise<[Buffer]>;
+  name: string;
+}
+
+let _gcsModule: GCSModule | undefined;
+async function getGCSModule(): Promise<GCSModule> {
+  if (_gcsModule) return _gcsModule;
+  try {
+    _gcsModule = (await import("@google-cloud/storage")) as unknown as GCSModule;
+    return _gcsModule;
+  } catch {
+    throw new StorageError(
+      "@google-cloud/storage is required for ServerGCSStorage. Install it: npm install @google-cloud/storage",
+      "import",
+    );
+  }
+}
+
+/**
+ * Google Cloud Storage server storage for SMART Health Links.
+ *
+ * Extends the base `GCSStorage` with `read` and `updateMetadata`
+ * methods needed for serving SHLs.
+ *
+ * @example
+ * ```ts
+ * import { ServerGCSStorage } from "@fhirfly-io/shl/server";
+ *
+ * const storage = new ServerGCSStorage({
+ *   bucket: "my-shl-bucket",
+ *   baseUrl: "https://shl.example.com",
+ * });
+ * ```
+ */
+export class ServerGCSStorage extends GCSStorage implements SHLServerStorage {
+  private _serverBucket?: GCSBucket;
+
+  constructor(config: GCSStorageConfig) {
+    super(config);
+  }
+
+  async read(key: string): Promise<string | Uint8Array | null> {
+    try {
+      const bucket = await this._getServerBucket();
+      const fileName = this._serverFileName(key);
+      const file = bucket.file(fileName);
+
+      const [content] = await file.download();
+      return content.toString("utf8");
+    } catch (err) {
+      const code = (err as { code?: number }).code;
+      if (code === 404) return null;
+      if (err instanceof StorageError) throw err;
+      throw new StorageError(
+        `Failed to read ${key}: ${err instanceof Error ? err.message : String(err)}`,
+        "read",
+      );
+    }
+  }
+
+  async updateMetadata(
+    shlId: string,
+    updater: (current: SHLMetadata) => SHLMetadata | null,
+  ): Promise<SHLMetadata | null> {
+    const key = `${shlId}/metadata.json`;
+    const raw = await this.read(key);
+    if (raw === null) return null;
+
+    const current = JSON.parse(raw as string) as SHLMetadata;
+    const updated = updater(current);
+    if (updated === null) return null;
+
+    await this.store(key, JSON.stringify(updated));
+    return updated;
+  }
+
+  private async _getServerBucket(): Promise<GCSBucket> {
+    if (!this._serverBucket) {
+      const gcs = await getGCSModule();
+      const storage = new gcs.Storage();
+      this._serverBucket = storage.bucket(this.config.bucket);
+    }
+    return this._serverBucket;
+  }
+
+  private _serverFileName(key: string): string {
+    const prefix = this.config.prefix?.replace(/\/+$/, "");
+    return prefix ? `${prefix}/${key}` : key;
+  }
+}
+
+/** Helper: convert a Node.js ReadableStream to a string. */
+async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }

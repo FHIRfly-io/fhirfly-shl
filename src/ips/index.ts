@@ -46,6 +46,12 @@ export type {
   ImmunizationByCVX,
   ImmunizationFromResource,
   ImmunizationManual,
+  ResultOptions,
+  ResultByLOINC,
+  ResultFromResource,
+  ResultManual,
+  ObservationStatus,
+  DocumentOptions,
 } from "./types.js";
 
 // FHIR R4 datatypes (re-exported for users building PatientFull input)

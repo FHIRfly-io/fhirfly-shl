@@ -4,8 +4,8 @@ export { create } from "./create.js";
 export { decode, decrypt, decryptContent } from "./decode.js";
 export { revoke } from "./revoke.js";
 export type { DecodedSHL } from "./decode.js";
-export { S3Storage, LocalStorage } from "./storage.js";
-export type { S3StorageConfig, LocalStorageConfig } from "./storage.js";
+export { S3Storage, LocalStorage, AzureStorage, GCSStorage, FhirflyStorage } from "./storage.js";
+export type { S3StorageConfig, LocalStorageConfig, AzureStorageConfig, GCSStorageConfig, FhirflyStorageConfig } from "./storage.js";
 export type {
   SHLOptions,
   SHLResult,
