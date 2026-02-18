@@ -26,7 +26,7 @@ import { runConsumption } from "./sections/04-consumption.js";
 import { runAccessControl } from "./sections/05-access-control.js";
 import { runEdgeCases } from "./sections/06-edge-cases.js";
 
-const API_BASE_URL = "https://devapi.fhirfly.io";
+const DEFAULT_API_BASE_URL = "https://devapi.fhirfly.io";
 
 const SECTIONS = [
   { num: 1, name: "IPS Bundle Building", fn: runBundleBuilding },
@@ -46,6 +46,7 @@ async function main(): Promise<void> {
       "FHIRfly API key (or set FHIRFLY_API_KEY env var)",
       process.env.FHIRFLY_API_KEY,
     )
+    .option("--api-base-url <url>", "API base URL", DEFAULT_API_BASE_URL)
     .option("--section <number>", "Run only one section (1-6)")
     .option("--verbose", "Show extra diagnostic output", false)
     .option("--skip-cleanup", "Don't revoke SHLs after exercise", false)
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
 
   const opts = program.opts<{
     apiKey: string;
+    apiBaseUrl: string;
     section?: string;
     verbose: boolean;
     skipCleanup: boolean;
@@ -72,15 +74,15 @@ async function main(): Promise<void> {
   // Initialize terminology client
   const client = new Fhirfly({
     apiKey: opts.apiKey,
-    baseUrl: API_BASE_URL,
+    baseUrl: opts.apiBaseUrl,
   });
 
   const runner = new Runner({ verbose: opts.verbose });
-  runner.header(API_BASE_URL);
+  runner.header(opts.apiBaseUrl);
 
   const ctx: ExerciseContext = {
     apiKey: opts.apiKey,
-    apiBaseUrl: API_BASE_URL,
+    apiBaseUrl: opts.apiBaseUrl,
     client,
     runner,
     verbose: opts.verbose,
