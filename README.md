@@ -137,6 +137,16 @@ app.listen(3000);
 
 Also available for Fastify (`@fhirfly-io/shl/fastify`) and Lambda (`@fhirfly-io/shl/lambda`).
 
+## Live Exercise
+
+Run the comprehensive integration test against the live API to exercise every SDK path:
+
+```bash
+npx tsx examples/live-exercise/index.ts --api-key <your-key> --verbose
+```
+
+Covers bundle building, FhirflyStorage, LocalStorage + Express, SHL consumption, access control, and edge cases. See [`examples/live-exercise/README.md`](examples/live-exercise/README.md) for details.
+
 ## Related
 
 - [@fhirfly-io/terminology](https://www.npmjs.com/package/@fhirfly-io/terminology) — FHIRfly terminology API SDK
