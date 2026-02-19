@@ -39,7 +39,9 @@ npm install @fhirfly-io/shl @fhirfly-io/terminology
 import { IPS, SHL } from "@fhirfly-io/shl";
 
 const bundle = new IPS.Bundle({
-  patient: { name: "Maria Garcia", birthDate: "1985-03-15", gender: "female" },
+  name: "Maria Garcia",
+  birthDate: "1985-03-15",
+  gender: "female",
 });
 
 // Manual coding — no API dependency
@@ -65,7 +67,9 @@ import Fhirfly from "@fhirfly-io/terminology";
 const client = new Fhirfly({ apiKey: process.env.FHIRFLY_API_KEY });
 
 const bundle = new IPS.Bundle({
-  patient: { name: "Maria Garcia", birthDate: "1985-03-15", gender: "female" },
+  name: "Maria Garcia",
+  birthDate: "1985-03-15",
+  gender: "female",
 });
 
 // Code-based input — FHIRfly enriches with display names, SNOMED mappings, etc.
@@ -152,7 +156,7 @@ Host your own SHL endpoints:
 
 ```typescript
 import express from "express";
-import { createShlMiddleware } from "@fhirfly-io/shl/express";
+import { expressMiddleware } from "@fhirfly-io/shl/express";
 import { ServerLocalStorage } from "@fhirfly-io/shl/server";
 
 const storage = new ServerLocalStorage({
@@ -161,7 +165,7 @@ const storage = new ServerLocalStorage({
 });
 
 const app = express();
-app.use("/shl", createShlMiddleware({ storage }));
+app.use("/shl", expressMiddleware({ storage }));
 app.listen(3000);
 ```
 
