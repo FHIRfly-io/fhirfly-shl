@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 import { base64urlDecode, decryptBundle, decryptContent as rawDecryptContent } from "./crypto.js";
 import { ValidationError, EncryptionError } from "../errors.js";
+import type { ManifestEntry } from "./types.js";
 
 /**
  * A decoded SMART Health Link payload.
@@ -164,4 +165,43 @@ export function decryptContent(
       `Failed to decrypt content: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/**
+ * Retrieve the JWE string from a manifest entry.
+ *
+ * Handles both delivery modes defined by the SHL spec:
+ * - **`location`** — fetches the JWE from the URL
+ * - **`embedded`** — returns the inline JWE directly
+ *
+ * Combine with `decrypt()` or `decryptContent()` for a complete consumption flow.
+ *
+ * @example
+ * ```ts
+ * const decoded = SHL.decode(shlUrl);
+ * const manifest = await fetch(decoded.url, {
+ *   method: "POST",
+ *   body: JSON.stringify({ passcode: "1234" }),
+ * }).then(r => r.json());
+ *
+ * for (const entry of manifest.files) {
+ *   const jwe = await SHL.getEntryContent(entry);
+ *   const { contentType, data } = SHL.decryptContent(jwe, decoded.key);
+ * }
+ * ```
+ */
+export async function getEntryContent(entry: ManifestEntry): Promise<string> {
+  if (entry.embedded) {
+    return entry.embedded;
+  }
+  if (!entry.location) {
+    throw new ValidationError(
+      "Manifest entry has neither location nor embedded content",
+    );
+  }
+  const res = await globalThis.fetch(entry.location);
+  if (!res.ok) {
+    throw new EncryptionError(`Failed to fetch content: HTTP ${res.status}`);
+  }
+  return res.text();
 }

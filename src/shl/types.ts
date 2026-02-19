@@ -52,6 +52,9 @@ export interface SHLResult {
 
 /**
  * SHL manifest file entry.
+ *
+ * Entries may use `location` (URL to fetch content) or `embedded` (inline JWE).
+ * Use `SHL.getEntryContent()` to handle both patterns transparently.
  */
 export interface ManifestEntry {
   /** MIME type of the content (e.g., "application/fhir+json", "application/pdf") */
@@ -70,6 +73,8 @@ export interface Manifest {
   files: ManifestEntry[];
   /** Manifest status per SHL spec: "finalized", "can-change", or "no-longer-valid" */
   status?: "finalized" | "can-change" | "no-longer-valid";
+  /** ISO 8601 timestamp of when the manifest was last updated */
+  lastUpdated?: string;
 }
 
 /**

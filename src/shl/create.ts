@@ -129,6 +129,7 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
       })),
     ],
     status: "finalized",
+    lastUpdated: new Date().toISOString(),
   };
 
   try {
