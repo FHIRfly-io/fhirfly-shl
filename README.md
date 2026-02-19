@@ -14,13 +14,18 @@ Raw codes + patient info → Enriched FHIR Bundle → Encrypted SHL → QR code
 
 PHI never leaves your server. Only terminology codes are sent to FHIRfly for enrichment — no BAA required.
 
+## Prerequisites
+
+- **Node.js** 18 or later
+- **FHIRfly API key** — optional, for code enrichment (display names, SNOMED mappings). [Get a free key](https://fhirfly.io/register). Without it, use manual `code`/`system`/`display` input or `bySNOMED`/`fromResource` (no API call needed).
+
 ## Installation
 
 ```bash
 npm install @fhirfly-io/shl
 ```
 
-For FHIRfly API enrichment (recommended):
+For FHIRfly API enrichment (optional — adds display names and SNOMED cross-mappings):
 
 ```bash
 npm install @fhirfly-io/shl @fhirfly-io/terminology
@@ -28,17 +33,42 @@ npm install @fhirfly-io/shl @fhirfly-io/terminology
 
 ## Quick Start
 
+### Without FHIRfly API (no key needed)
+
+```typescript
+import { IPS, SHL } from "@fhirfly-io/shl";
+
+const bundle = new IPS.Bundle({
+  patient: { name: "Maria Garcia", birthDate: "1985-03-15", gender: "female" },
+});
+
+// Manual coding — no API dependency
+bundle.addMedication({ code: "376988009", system: "http://snomed.info/sct", display: "Levothyroxine" });
+bundle.addCondition({ code: "44054006", system: "http://snomed.info/sct", display: "Type 2 diabetes" });
+bundle.addAllergy({ bySNOMED: "387207008" });
+
+const fhirBundle = await bundle.build();
+
+const storage = new SHL.LocalStorage({ directory: "./shl-data", baseUrl: "http://localhost:3456/shl" });
+const result = await SHL.create({ bundle: fhirBundle, storage, passcode: "1234" });
+
+console.log(result.url);    // shlink:/eyJ...
+console.log(result.qrCode); // data:image/png;base64,...
+```
+
+### With FHIRfly API (enriched)
+
 ```typescript
 import { IPS, SHL } from "@fhirfly-io/shl";
 import Fhirfly from "@fhirfly-io/terminology";
 
 const client = new Fhirfly({ apiKey: process.env.FHIRFLY_API_KEY });
 
-// Build the IPS Bundle
 const bundle = new IPS.Bundle({
   patient: { name: "Maria Garcia", birthDate: "1985-03-15", gender: "female" },
 });
 
+// Code-based input — FHIRfly enriches with display names, SNOMED mappings, etc.
 bundle.addMedication({ byNDC: "00071015523", fhirfly: client.ndc });
 bundle.addCondition({ byICD10: "E11.9", fhirfly: client.icd10 });
 bundle.addAllergy({ bySNOMED: "387207008" });
@@ -48,7 +78,7 @@ bundle.addDocument({ content: pdfBuffer, contentType: "application/pdf", title: 
 
 const fhirBundle = await bundle.build();
 
-// Create the SHL (zero-infra with FhirflyStorage)
+// FhirflyStorage — zero infrastructure, included free in all plans
 const storage = new SHL.FhirflyStorage({ apiKey: process.env.FHIRFLY_API_KEY });
 
 const result = await SHL.create({
@@ -149,6 +179,8 @@ Covers bundle building, FhirflyStorage, LocalStorage + Express, SHL consumption,
 
 ## Related
 
+- [EHR Integration Guide](https://fhirfly.io/docs/shl/ehr-integration) — Map HL7v2, CCDA, FHIR R4, and flat database records to IPS bundles
+- [Security & Compliance](https://fhirfly.io/docs/shl/security) — Zero-knowledge architecture, HIPAA, compliance checklist
 - [@fhirfly-io/terminology](https://www.npmjs.com/package/@fhirfly-io/terminology) — FHIRfly terminology API SDK
 - [SMART Health Links Spec](https://docs.smarthealthit.org/smart-health-links/spec/)
 - [IPS Implementation Guide](https://build.fhir.org/ig/HL7/fhir-ips/)

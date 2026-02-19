@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { createHash } from "node:crypto";
 import { SHL } from "../src/index.js";
 import type { SHLStorage } from "../src/shl/types.js";
 import { base64urlDecode, decryptBundle } from "../src/shl/crypto.js";
@@ -188,7 +189,8 @@ describe("SHL.create() — options", () => {
 
     const metadataJson = storage.files.get(`${result.id}/metadata.json`) as string;
     const metadata = JSON.parse(metadataJson) as SHLMetadata;
-    expect(metadata.passcode).toBe("1234");
+    // Passcode is stored as SHA-256 hash, not plaintext
+    expect(metadata.passcode).toBe(createHash("sha256").update("1234").digest("hex"));
 
     expect(result.passcode).toBe("1234");
   });

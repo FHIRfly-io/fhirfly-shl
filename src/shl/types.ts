@@ -68,6 +68,8 @@ export interface ManifestEntry {
 export interface Manifest {
   /** Array of files available via this SHL */
   files: ManifestEntry[];
+  /** Manifest status per SHL spec: "finalized", "can-change", or "no-longer-valid" */
+  status?: "finalized" | "can-change" | "no-longer-valid";
 }
 
 /**

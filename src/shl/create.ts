@@ -4,6 +4,7 @@ import type { SHLOptions, SHLResult, Manifest, SHLMetadata } from "./types.js";
 import { ValidationError, StorageError, EncryptionError } from "../errors.js";
 import { generateKey, generateShlId, encryptBundle, encryptContent, base64url } from "./crypto.js";
 import { generateQRCode } from "./qrcode.js";
+import { createHash } from "node:crypto";
 
 /**
  * Create a SMART Health Link from a FHIR Bundle.
@@ -122,6 +123,7 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
         location: `${baseUrl}/${shlId}/attachment/${i}`,
       })),
     ],
+    status: "finalized",
   };
 
   try {
@@ -137,7 +139,9 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
   const metadata: SHLMetadata = {
     createdAt: new Date().toISOString(),
   };
-  if (passcode) metadata.passcode = passcode;
+  if (passcode) {
+    metadata.passcode = createHash("sha256").update(passcode).digest("hex");
+  }
   if (maxAccesses !== undefined) metadata.maxAccesses = maxAccesses;
   if (expiresAt) metadata.expiresAt = expiresAt.toISOString();
 

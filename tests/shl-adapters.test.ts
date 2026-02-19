@@ -1,9 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { expressMiddleware } from "../src/adapters/express.js";
 import { fastifyPlugin } from "../src/adapters/fastify.js";
 import { lambdaHandler } from "../src/adapters/lambda.js";
 import type { SHLServerStorage } from "../src/server/types.js";
 import type { SHLMetadata, Manifest } from "../src/shl/types.js";
+
+/** Hash a passcode with SHA-256 (matches create.ts storage format). */
+function hashPasscode(passcode: string): string {
+  return createHash("sha256").update(passcode).digest("hex");
+}
 
 /** In-memory mock server storage. */
 class MockServerStorage implements SHLServerStorage {
@@ -112,7 +118,7 @@ describe("expressMiddleware", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "secret",
+      passcode: hashPasscode("secret"),
     });
     const mw = expressMiddleware({ storage });
 
@@ -312,7 +318,7 @@ describe("lambdaHandler", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "1234",
+      passcode: hashPasscode("1234"),
     });
     const handler = lambdaHandler({ storage, pathPrefix: "/shl" });
 
@@ -331,7 +337,7 @@ describe("lambdaHandler", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "correct",
+      passcode: hashPasscode("correct"),
     });
     const handler = lambdaHandler({ storage, pathPrefix: "/shl" });
 

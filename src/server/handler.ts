@@ -6,6 +6,7 @@ import type {
   SHLHandlerConfig,
 } from "./types.js";
 import type { SHLMetadata, Manifest } from "../shl/types.js";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 /**
  * Create a framework-agnostic SHL request handler.
@@ -106,9 +107,18 @@ async function handleManifest(
       return null;
     }
 
-    // Check passcode
+    // Check passcode (timing-safe comparison with SHA-256 hash)
     if (metadata.passcode) {
-      if (!providedPasscode || providedPasscode !== metadata.passcode) {
+      if (!providedPasscode) {
+        accessDeniedReason = "passcode";
+        return null;
+      }
+      const providedHash = createHash("sha256").update(providedPasscode).digest("hex");
+      const storedHash = metadata.passcode;
+      const a = Buffer.from(providedHash);
+      const b = Buffer.from(storedHash);
+      // Constant-time comparison: compare with self if lengths differ to avoid timing leak
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
         accessDeniedReason = "passcode";
         return null;
       }

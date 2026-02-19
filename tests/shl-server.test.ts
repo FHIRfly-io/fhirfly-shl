@@ -1,7 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { createHandler } from "../src/server/handler.js";
 import type { SHLServerStorage, HandlerRequest } from "../src/server/types.js";
 import type { SHLMetadata, Manifest } from "../src/shl/types.js";
+
+/** Hash a passcode with SHA-256 (matches create.ts storage format). */
+function hashPasscode(passcode: string): string {
+  return createHash("sha256").update(passcode).digest("hex");
+}
 
 /** In-memory mock server storage for tests. */
 class MockServerStorage implements SHLServerStorage {
@@ -168,7 +174,7 @@ describe("createHandler — passcode validation", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "secret",
+      passcode: hashPasscode("secret"),
     });
     const handler = createHandler({ storage });
 
@@ -180,7 +186,7 @@ describe("createHandler — passcode validation", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "secret",
+      passcode: hashPasscode("secret"),
     });
     const handler = createHandler({ storage });
 
@@ -195,7 +201,7 @@ describe("createHandler — passcode validation", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "secret",
+      passcode: hashPasscode("secret"),
     });
     const handler = createHandler({ storage });
 
@@ -210,7 +216,7 @@ describe("createHandler — passcode validation", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-expired-pass", {
       createdAt: new Date().toISOString(),
-      passcode: "secret",
+      passcode: hashPasscode("secret"),
       expiresAt: new Date("2020-01-01").toISOString(),
     });
     const handler = createHandler({ storage });
@@ -323,7 +329,7 @@ describe("createHandler — onAccess callback", () => {
     const storage = new MockServerStorage();
     seedStorage(storage, "shl-1", {
       createdAt: new Date().toISOString(),
-      passcode: "secret",
+      passcode: hashPasscode("secret"),
     });
     const onAccess = vi.fn();
     const handler = createHandler({ storage, onAccess });
