@@ -1,6 +1,6 @@
 {
   "name": "@fhirfly-io/shl",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Official FHIRfly SDK for SMART Health Links - IPS bundle creation and SHL sharing",
   "author": "FHIRfly.io LLC <admin@fhirfly.io>",
   "license": "MIT",
