@@ -157,7 +157,7 @@ describe("SHL.create() — storage files", () => {
     const manifestJson = storage.files.get(`${result.id}/manifest.json`) as string;
     const manifest = JSON.parse(manifestJson) as Manifest;
     expect(manifest.files).toHaveLength(1);
-    expect(manifest.files[0]!.contentType).toBe("application/fhir+json");
+    expect(manifest.files[0]!.contentType).toBe("application/fhir+json;fhirVersion=4.0.1");
     expect(manifest.files[0]!.location).toBe(
       `${storage.baseUrl}/${result.id}/content`,
     );
@@ -357,6 +357,19 @@ describe("SHL.create() — debug mode", () => {
     const result = await SHL.create({ bundle: testBundle, storage });
 
     expect(result.debugBundlePath).toBeUndefined();
+  });
+
+  it("throws ValidationError when debug=true with NODE_ENV=production", async () => {
+    const storage = new MockStorage();
+    const originalEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      await expect(
+        SHL.create({ bundle: testBundle, storage, debug: true }),
+      ).rejects.toThrow("debug mode is not allowed when NODE_ENV=production");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
   });
 });
 

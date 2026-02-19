@@ -72,6 +72,11 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
 
   // Store unencrypted bundle for debugging (development only)
   if (debug) {
+    if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
+      throw new ValidationError(
+        "debug mode is not allowed when NODE_ENV=production — it stores unencrypted PHI",
+      );
+    }
     const debugPath = `${shlId}/bundle.json`;
     try {
       await storage.store(debugPath, JSON.stringify(bundle, null, 2));
@@ -115,7 +120,7 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
   const manifest: Manifest = {
     files: [
       {
-        contentType: "application/fhir+json",
+        contentType: "application/fhir+json;fhirVersion=4.0.1",
         location: `${baseUrl}/${shlId}/content`,
       },
       ...attachments.map((att, i) => ({

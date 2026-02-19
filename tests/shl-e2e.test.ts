@@ -95,7 +95,7 @@ describe("End-to-end: IPS.Bundle → SHL.create → server handler → SHL.decod
 
     const manifest = JSON.parse(manifestRes.body as string) as Manifest;
     expect(manifest.files).toHaveLength(1);
-    expect(manifest.files[0]!.contentType).toBe("application/fhir+json");
+    expect(manifest.files[0]!.contentType).toBe("application/fhir+json;fhirVersion=4.0.1");
 
     // 5. GET content (from manifest location)
     const contentReq: HandlerRequest = {

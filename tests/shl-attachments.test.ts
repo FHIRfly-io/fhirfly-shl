@@ -32,7 +32,7 @@ describe("SHL attachments (multi-file support)", () => {
       readFileSync(join(tempDir, result.id, "manifest.json"), "utf8"),
     );
     expect(manifest.files).toHaveLength(1);
-    expect(manifest.files[0].contentType).toBe("application/fhir+json");
+    expect(manifest.files[0].contentType).toBe("application/fhir+json;fhirVersion=4.0.1");
   });
 
   it("creates an SHL with a PDF attachment", async () => {
@@ -50,7 +50,7 @@ describe("SHL attachments (multi-file support)", () => {
     );
 
     expect(manifest.files).toHaveLength(2);
-    expect(manifest.files[0].contentType).toBe("application/fhir+json");
+    expect(manifest.files[0].contentType).toBe("application/fhir+json;fhirVersion=4.0.1");
     expect(manifest.files[1].contentType).toBe("application/pdf");
     expect(manifest.files[1].location).toContain("/attachment/0");
 
