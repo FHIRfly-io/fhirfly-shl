@@ -91,7 +91,10 @@ async function getS3Module(): Promise<S3Module> {
  * Implements the full `SHLServerStorage` interface with `read` and
  * `updateMetadata` on top of S3.
  *
- * Uses conditional PutObject for optimistic concurrency on metadata updates.
+ * Note: `updateMetadata` uses a plain read-modify-write pattern without
+ * conditional writes. Under concurrent load, a few extra accesses may be
+ * allowed beyond `maxAccesses`. For strict enforcement, use FhirflyStorage
+ * or add your own atomic counter.
  *
  * @example
  * ```ts

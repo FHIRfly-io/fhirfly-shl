@@ -5,6 +5,7 @@ export { ServerLocalStorage, ServerS3Storage, ServerAzureStorage, ServerGCSStora
 export type {
   SHLServerStorage,
   SHLHandlerConfig,
+  CorsConfig,
   HandlerRequest,
   HandlerResponse,
   AccessEvent,

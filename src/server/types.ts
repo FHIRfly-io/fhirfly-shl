@@ -56,6 +56,22 @@ export interface SHLServerStorage extends SHLStorage {
 }
 
 /**
+ * CORS configuration for the SHL server handler.
+ *
+ * By default, the handler adds permissive CORS headers to all responses
+ * so that browser-based SHL viewers can access self-hosted servers.
+ * Set `cors: false` to disable, or provide an object to customize.
+ */
+export interface CorsConfig {
+  /** Allowed origin(s). Default: `"*"` */
+  origin?: string;
+  /** Allowed methods. Default: `"GET, POST, OPTIONS"` */
+  methods?: string;
+  /** Allowed headers. Default: `"Content-Type, Authorization"` */
+  headers?: string;
+}
+
+/**
  * Configuration for the SHL server handler.
  */
 export interface SHLHandlerConfig {
@@ -67,6 +83,12 @@ export interface SHLHandlerConfig {
    * Useful for logging, analytics, or custom access control.
    */
   onAccess?: (event: AccessEvent) => void | Promise<void>;
+
+  /**
+   * CORS configuration. Defaults to permissive headers (`Access-Control-Allow-Origin: *`).
+   * Set to `false` to disable CORS headers entirely.
+   */
+  cors?: CorsConfig | false;
 }
 
 /**

@@ -4,6 +4,7 @@ import type {
   HandlerRequest,
   HandlerResponse,
   SHLHandlerConfig,
+  CorsConfig,
 } from "./types.js";
 import type { SHLMetadata, Manifest } from "../shl/types.js";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -12,10 +13,14 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * Create a framework-agnostic SHL request handler.
  *
  * Returns an async function that processes incoming requests and returns
- * responses. This handler implements two routes:
+ * responses. This handler implements three routes:
  *
  * - `POST /{shlId}` — Manifest endpoint (validates passcode, checks access limits)
  * - `GET /{shlId}/content` — Content endpoint (serves encrypted JWE)
+ * - `GET /{shlId}/attachment/{index}` — Attachment endpoint (serves encrypted attachment)
+ *
+ * By default, CORS headers are added to all responses so browser-based SHL
+ * viewers can access self-hosted servers. Set `cors: false` to disable.
  *
  * Framework adapters (Express, Fastify, Lambda) translate their native
  * request/response types to/from `HandlerRequest`/`HandlerResponse`.
@@ -35,40 +40,64 @@ export function createHandler(
   config: SHLHandlerConfig,
 ): (req: HandlerRequest) => Promise<HandlerResponse> {
   const { storage, onAccess } = config;
+  const corsHeaders = resolveCorsHeaders(config.cors);
 
   return async (req: HandlerRequest): Promise<HandlerResponse> => {
+    // Handle CORS preflight
+    if (req.method === "OPTIONS") {
+      return {
+        status: 204,
+        headers: { ...corsHeaders },
+        body: "",
+      };
+    }
+
     // Normalize path: strip leading slash, split into segments
     const path = req.path.replace(/^\/+/, "");
     const segments = path.split("/").filter(Boolean);
 
+    let response: HandlerResponse;
+
     // Route: POST /{shlId} → manifest
     if (segments.length === 1 && req.method === "POST") {
-      return handleManifest(segments[0]!, req, storage, onAccess);
+      response = await handleManifest(segments[0]!, req, storage, onAccess);
     }
-
     // Route: GET /{shlId}/content → serve encrypted content
-    if (segments.length === 2 && segments[1] === "content" && req.method === "GET") {
-      return handleContent(segments[0]!, storage);
+    else if (segments.length === 2 && segments[1] === "content" && req.method === "GET") {
+      response = await handleContent(segments[0]!, storage);
     }
-
     // Route: GET /{shlId}/attachment/{index} → serve encrypted attachment
-    if (segments.length === 3 && segments[1] === "attachment" && req.method === "GET") {
-      const index = segments[2]!;
-      return handleAttachment(segments[0]!, index, storage);
+    else if (segments.length === 3 && segments[1] === "attachment" && req.method === "GET") {
+      response = await handleAttachment(segments[0]!, segments[2]!, storage);
     }
-
     // Method not allowed for known paths
-    if (segments.length === 1 && req.method !== "POST") {
-      return jsonResponse(405, { error: "Method not allowed. Use POST for manifest requests." });
+    else if (segments.length === 1 && req.method !== "POST") {
+      response = jsonResponse(405, { error: "Method not allowed. Use POST for manifest requests." });
     }
-    if (segments.length === 2 && segments[1] === "content" && req.method !== "GET") {
-      return jsonResponse(405, { error: "Method not allowed. Use GET for content requests." });
+    else if (segments.length === 2 && segments[1] === "content" && req.method !== "GET") {
+      response = jsonResponse(405, { error: "Method not allowed. Use GET for content requests." });
     }
-    if (segments.length === 3 && segments[1] === "attachment" && req.method !== "GET") {
-      return jsonResponse(405, { error: "Method not allowed. Use GET for attachment requests." });
+    else if (segments.length === 3 && segments[1] === "attachment" && req.method !== "GET") {
+      response = jsonResponse(405, { error: "Method not allowed. Use GET for attachment requests." });
+    }
+    else {
+      response = jsonResponse(404, { error: "Not found" });
     }
 
-    return jsonResponse(404, { error: "Not found" });
+    // Inject CORS headers into every response
+    response.headers = { ...response.headers, ...corsHeaders };
+    return response;
+  };
+}
+
+/** Resolve CORS headers from config. Returns empty object if disabled. */
+function resolveCorsHeaders(cors: SHLHandlerConfig["cors"]): Record<string, string> {
+  if (cors === false) return {};
+  const c: CorsConfig = cors ?? {};
+  return {
+    "access-control-allow-origin": c.origin ?? "*",
+    "access-control-allow-methods": c.methods ?? "GET, POST, OPTIONS",
+    "access-control-allow-headers": c.headers ?? "Content-Type, Authorization",
   };
 }
 

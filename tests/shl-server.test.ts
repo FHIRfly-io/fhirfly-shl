@@ -350,6 +350,60 @@ describe("createHandler — onAccess callback", () => {
   });
 });
 
+describe("createHandler — CORS headers", () => {
+  it("adds default CORS headers to all responses", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({ path: "/shl-1" }));
+    expect(res.status).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    expect(res.headers["access-control-allow-methods"]).toBe("GET, POST, OPTIONS");
+    expect(res.headers["access-control-allow-headers"]).toBe("Content-Type, Authorization");
+  });
+
+  it("handles OPTIONS preflight request", async () => {
+    const storage = new MockServerStorage();
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({ method: "OPTIONS", path: "/shl-1" }));
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    expect(res.headers["access-control-allow-methods"]).toBe("GET, POST, OPTIONS");
+  });
+
+  it("respects custom CORS config", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
+    const handler = createHandler({
+      storage,
+      cors: { origin: "https://viewer.example.com" },
+    });
+
+    const res = await handler(makeRequest({ path: "/shl-1" }));
+    expect(res.headers["access-control-allow-origin"]).toBe("https://viewer.example.com");
+  });
+
+  it("omits CORS headers when cors: false", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
+    const handler = createHandler({ storage, cors: false });
+
+    const res = await handler(makeRequest({ path: "/shl-1" }));
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("adds CORS headers to error responses", async () => {
+    const storage = new MockServerStorage();
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({ path: "/nonexistent" }));
+    expect(res.status).toBe(404);
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+  });
+});
+
 describe("createHandler — path normalization", () => {
   it("handles path with leading slash", async () => {
     const storage = new MockServerStorage();
