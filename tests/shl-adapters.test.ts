@@ -45,9 +45,13 @@ class MockServerStorage implements SHLServerStorage {
 function seedStorage(storage: MockServerStorage, shlId: string, metadata: SHLMetadata): void {
   storage.files.set(`${shlId}/metadata.json`, JSON.stringify(metadata));
   storage.files.set(`${shlId}/manifest.json`, JSON.stringify({
-    files: [{ contentType: "application/fhir+json", location: `${storage.baseUrl}/${shlId}/content` }],
+    files: [
+      { contentType: "application/fhir+json", location: `${storage.baseUrl}/${shlId}/content` },
+      { contentType: "application/pdf", location: `${storage.baseUrl}/${shlId}/attachment/0` },
+    ],
   }));
   storage.files.set(`${shlId}/content.jwe`, "test-jwe-content");
+  storage.files.set(`${shlId}/attachment-0.jwe`, "test-attachment-content");
 }
 
 // ─────────────────────────────────────────────
@@ -83,7 +87,7 @@ describe("expressMiddleware", () => {
     expect(statusCode).toBe(200);
     expect(sentHeaders["content-type"]).toBe("application/json");
     const manifest = JSON.parse(sentBody) as Manifest;
-    expect(manifest.files).toHaveLength(1);
+    expect(manifest.files).toHaveLength(2);
   });
 
   it("handles GET /{shlId}/content request", async () => {
@@ -112,6 +116,34 @@ describe("expressMiddleware", () => {
     expect(statusCode).toBe(200);
     expect(sentHeaders["content-type"]).toBe("application/jose");
     expect(sentBody).toBe("test-jwe-content");
+  });
+
+  it("handles GET /{shlId}/attachment/{index} request", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
+    const mw = expressMiddleware({ storage });
+
+    const req = {
+      method: "GET",
+      path: "/shl-1/attachment/0",
+      headers: {},
+    };
+
+    let statusCode = 0;
+    let sentBody: string | Buffer = "";
+    let sentHeaders: Record<string, string> = {};
+    const res = {
+      status(code: number) { statusCode = code; return res; },
+      set(headers: Record<string, string>) { sentHeaders = headers; return res; },
+      send(body: string | Buffer) { sentBody = body; },
+    };
+
+    mw(req, res);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(statusCode).toBe(200);
+    expect(sentHeaders["content-type"]).toBe("application/jose");
+    expect(sentBody).toBe("test-attachment-content");
   });
 
   it("returns 401 for missing passcode", async () => {
@@ -148,7 +180,7 @@ describe("expressMiddleware", () => {
 // ─────────────────────────────────────────────
 
 describe("fastifyPlugin", () => {
-  it("registers POST /:shlId and GET /:shlId/content routes", () => {
+  it("registers POST /:shlId, GET /:shlId/content, and GET /:shlId/attachment/:index routes", () => {
     const storage = new MockServerStorage();
     const plugin = fastifyPlugin({ storage });
 
@@ -163,6 +195,7 @@ describe("fastifyPlugin", () => {
 
     expect(registeredRoutes).toContain("POST /:shlId");
     expect(registeredRoutes).toContain("GET /:shlId/content");
+    expect(registeredRoutes).toContain("GET /:shlId/attachment/:index");
     expect(done).toHaveBeenCalledOnce();
   });
 
@@ -203,7 +236,7 @@ describe("fastifyPlugin", () => {
     expect(statusCode).toBe(200);
     expect(sentHeaders["content-type"]).toBe("application/json");
     const manifest = JSON.parse(sentBody as string) as Manifest;
-    expect(manifest.files).toHaveLength(1);
+    expect(manifest.files).toHaveLength(2);
   });
 
   it("GET handler returns content for valid SHL", async () => {
@@ -211,11 +244,11 @@ describe("fastifyPlugin", () => {
     seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
     const plugin = fastifyPlugin({ storage });
 
-    let getHandler: ((req: unknown, reply: unknown) => Promise<void>) | undefined;
+    const getHandlers = new Map<string, (req: unknown, reply: unknown) => Promise<void>>();
     const mockFastify = {
       post() {},
-      get(_path: string, handler: (req: unknown, reply: unknown) => Promise<void>) {
-        getHandler = handler;
+      get(path: string, handler: (req: unknown, reply: unknown) => Promise<void>) {
+        getHandlers.set(path, handler);
       },
     };
 
@@ -235,11 +268,49 @@ describe("fastifyPlugin", () => {
       send(body: string | Buffer) { sentBody = body; },
     };
 
-    await getHandler!(req, reply);
+    const contentHandler = getHandlers.get("/:shlId/content")!;
+    await contentHandler(req, reply);
 
     expect(statusCode).toBe(200);
     expect(sentHeaders["content-type"]).toBe("application/jose");
     expect(sentBody).toBe("test-jwe-content");
+  });
+
+  it("GET handler returns attachment for valid SHL", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
+    const plugin = fastifyPlugin({ storage });
+
+    const getHandlers = new Map<string, (req: unknown, reply: unknown) => Promise<void>>();
+    const mockFastify = {
+      post() {},
+      get(path: string, handler: (req: unknown, reply: unknown) => Promise<void>) {
+        getHandlers.set(path, handler);
+      },
+    };
+
+    plugin(mockFastify as never, {}, () => {});
+
+    const req = {
+      params: { shlId: "shl-1", index: "0" },
+      headers: {},
+    };
+
+    let statusCode = 0;
+    let sentBody: string | Buffer = "";
+    let sentHeaders: Record<string, string> = {};
+    const reply = {
+      status(code: number) { statusCode = code; return reply; },
+      headers(h: Record<string, string>) { sentHeaders = h; return reply; },
+      send(body: string | Buffer) { sentBody = body; },
+    };
+
+    const attachmentHandler = getHandlers.get("/:shlId/attachment/:index")!;
+    await attachmentHandler(req, reply);
+
+    expect(statusCode).toBe(200);
+    expect(sentHeaders["content-type"]).toBe("application/jose");
+    expect(sentBody).toBe("test-attachment-content");
   });
 });
 
@@ -264,7 +335,7 @@ describe("lambdaHandler", () => {
     expect(result.statusCode).toBe(200);
     expect(result.headers["content-type"]).toBe("application/json");
     const manifest = JSON.parse(result.body) as Manifest;
-    expect(manifest.files).toHaveLength(1);
+    expect(manifest.files).toHaveLength(2);
   });
 
   it("handles GET content request", async () => {
@@ -282,6 +353,23 @@ describe("lambdaHandler", () => {
     expect(result.statusCode).toBe(200);
     expect(result.headers["content-type"]).toBe("application/jose");
     expect(result.body).toBe("test-jwe-content");
+  });
+
+  it("handles GET attachment request", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-1", { createdAt: new Date().toISOString() });
+    const handler = lambdaHandler({ storage, pathPrefix: "/shl" });
+
+    const event = {
+      requestContext: { http: { method: "GET", path: "/shl/shl-1/attachment/0" } },
+      headers: {},
+    };
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.headers["content-type"]).toBe("application/jose");
+    expect(result.body).toBe("test-attachment-content");
   });
 
   it("strips pathPrefix from event path", async () => {

@@ -34,7 +34,7 @@ type FastifyDone = (err?: Error) => void;
  * Create a Fastify plugin for serving SMART Health Links.
  *
  * Register this plugin with a prefix to mount the SHL routes.
- * The plugin registers `POST /:shlId` and `GET /:shlId/content`.
+ * The plugin registers `POST /:shlId`, `GET /:shlId/content`, and `GET /:shlId/attachment/:index`.
  *
  * @example
  * ```ts
@@ -79,6 +79,23 @@ export function fastifyPlugin(
       const handlerReq: HandlerRequest = {
         method: "GET",
         path: `/${shlId}/content`,
+        body: undefined,
+        headers: normalizeHeaders(req.headers),
+      };
+
+      const result = await handle(handlerReq);
+      reply.status(result.status).headers(result.headers).send(
+        typeof result.body === "string" ? result.body : Buffer.from(result.body),
+      );
+    });
+
+    // GET /:shlId/attachment/:index — attachment endpoint
+    fastify.get("/:shlId/attachment/:index", async (req: FastifyRequest, reply: FastifyReply) => {
+      const shlId = req.params["shlId"] ?? "";
+      const index = req.params["index"] ?? "";
+      const handlerReq: HandlerRequest = {
+        method: "GET",
+        path: `/${shlId}/attachment/${index}`,
         body: undefined,
         headers: normalizeHeaders(req.headers),
       };
