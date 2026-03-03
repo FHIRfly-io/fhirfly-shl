@@ -15,6 +15,7 @@ import type {
   ResolvedImmunization,
   ResolvedCoding,
   ValidationIssue,
+  BundleProfile,
 } from "./types.js";
 
 /** Result of resolving all immunizations — includes build-time warnings. */
@@ -29,7 +30,7 @@ export interface ImmunizationResolutionResult {
 export async function resolveImmunizations(
   immunizations: ImmunizationOptions[],
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
   generateUuid: () => string,
 ): Promise<ImmunizationResolutionResult> {
   const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [];
@@ -158,7 +159,7 @@ function buildImmunization(
   resolved: ResolvedImmunization,
   id: string,
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const resource: Record<string, unknown> = {
     resourceType: "Immunization",

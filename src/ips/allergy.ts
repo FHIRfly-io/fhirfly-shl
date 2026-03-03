@@ -14,6 +14,7 @@ import type {
   AllergyManual,
   ResolvedAllergy,
   ValidationIssue,
+  BundleProfile,
 } from "./types.js";
 
 /** Result of resolving all allergies — includes build-time warnings. */
@@ -28,7 +29,7 @@ export interface AllergyResolutionResult {
 export async function resolveAllergies(
   allergies: AllergyOptions[],
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
   generateUuid: () => string,
 ): Promise<AllergyResolutionResult> {
   const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [];
@@ -165,7 +166,7 @@ function buildAllergyIntolerance(
   resolved: ResolvedAllergy,
   id: string,
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const resource: Record<string, unknown> = {
     resourceType: "AllergyIntolerance",

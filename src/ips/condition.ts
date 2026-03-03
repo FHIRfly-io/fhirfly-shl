@@ -17,6 +17,7 @@ import type {
   ResolvedCoding,
   ValidationIssue,
   FhirflyClient,
+  BundleProfile,
 } from "./types.js";
 
 /** Result of resolving all conditions — includes build-time warnings. */
@@ -31,7 +32,7 @@ export interface ConditionResolutionResult {
 export async function resolveConditions(
   conditions: ConditionOptions[],
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
   generateUuid: () => string,
 ): Promise<ConditionResolutionResult> {
   const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [];
@@ -254,7 +255,7 @@ function buildCondition(
   resolved: ResolvedCondition,
   id: string,
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const resource: Record<string, unknown> = {
     resourceType: "Condition",

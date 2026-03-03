@@ -14,6 +14,8 @@ export interface HandlerRequest {
   body?: unknown;
   /** Request headers (lowercase keys) */
   headers: Record<string, string | undefined>;
+  /** Query parameters (e.g., { recipient: "Dr. Smith" }) */
+  query?: Record<string, string | undefined>;
 }
 
 /**
@@ -101,4 +103,8 @@ export interface AccessEvent {
   accessCount: number;
   /** Timestamp of the access */
   timestamp: Date;
+  /** Recipient identifier from query parameter (e.g., provider name) */
+  recipient?: string;
+  /** Retrieval mode used for this access */
+  mode?: "manifest" | "direct";
 }

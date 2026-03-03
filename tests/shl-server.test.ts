@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 import { describe, it, expect, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { createHandler } from "../src/server/handler.js";
@@ -430,5 +432,167 @@ describe("createHandler — path normalization", () => {
 
     const res = await handler(makeRequest({ path: "///shl-1" }));
     expect(res.status).toBe(200);
+  });
+});
+
+describe("createHandler — direct access (GET /{shlId})", () => {
+  it("returns content for direct-mode SHL", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-direct/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-direct/content.jwe", "direct-jwe-content");
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({
+      method: "GET",
+      path: "/shl-direct",
+    }));
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/jose");
+    expect(res.body).toBe("direct-jwe-content");
+  });
+
+  it("returns 405 for GET on manifest-mode SHL (backward compat)", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-manifest", { createdAt: new Date().toISOString() });
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({
+      method: "GET",
+      path: "/shl-manifest",
+    }));
+    expect(res.status).toBe(405);
+  });
+
+  it("returns 404 for GET on nonexistent SHL", async () => {
+    const storage = new MockServerStorage();
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({
+      method: "GET",
+      path: "/nonexistent",
+    }));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 410 when direct-mode SHL has expired", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-exp/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+      expiresAt: new Date("2020-01-01").toISOString(),
+    }));
+    storage.files.set("shl-exp/content.jwe", "content");
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({
+      method: "GET",
+      path: "/shl-exp",
+    }));
+    expect(res.status).toBe(410);
+  });
+
+  it("returns 410 when direct-mode SHL access limit reached", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-lim/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+      maxAccesses: 1,
+      accessCount: 0,
+    }));
+    storage.files.set("shl-lim/content.jwe", "content");
+    const handler = createHandler({ storage });
+
+    // First access succeeds
+    expect((await handler(makeRequest({ method: "GET", path: "/shl-lim" }))).status).toBe(200);
+    // Second access → 410
+    expect((await handler(makeRequest({ method: "GET", path: "/shl-lim" }))).status).toBe(410);
+  });
+
+  it("increments accessCount on direct access", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-cnt/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-cnt/content.jwe", "content");
+    const handler = createHandler({ storage });
+
+    await handler(makeRequest({ method: "GET", path: "/shl-cnt" }));
+    await handler(makeRequest({ method: "GET", path: "/shl-cnt" }));
+
+    const metadata = JSON.parse(storage.files.get("shl-cnt/metadata.json") as string);
+    expect(metadata.accessCount).toBe(2);
+  });
+
+  it("fires onAccess with mode=direct and recipient", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-ev/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-ev/content.jwe", "content");
+    const onAccess = vi.fn();
+    const handler = createHandler({ storage, onAccess });
+
+    await handler(makeRequest({
+      method: "GET",
+      path: "/shl-ev",
+      query: { recipient: "Dr. Smith" },
+    }));
+
+    expect(onAccess).toHaveBeenCalledOnce();
+    expect(onAccess).toHaveBeenCalledWith(expect.objectContaining({
+      shlId: "shl-ev",
+      mode: "direct",
+      recipient: "Dr. Smith",
+      accessCount: 1,
+    }));
+  });
+
+  it("sets cache-control: no-store on direct access", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-cc/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-cc/content.jwe", "content");
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({ method: "GET", path: "/shl-cc" }));
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+});
+
+describe("createHandler — recipient passthrough on manifest", () => {
+  it("passes recipient query param to onAccess in manifest mode", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-rcp", { createdAt: new Date().toISOString() });
+    const onAccess = vi.fn();
+    const handler = createHandler({ storage, onAccess });
+
+    await handler(makeRequest({
+      path: "/shl-rcp",
+      query: { recipient: "Dr. Jones" },
+    }));
+
+    expect(onAccess).toHaveBeenCalledWith(expect.objectContaining({
+      mode: "manifest",
+      recipient: "Dr. Jones",
+    }));
+  });
+
+  it("onAccess omits recipient when not in query", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-no-rcp", { createdAt: new Date().toISOString() });
+    const onAccess = vi.fn();
+    const handler = createHandler({ storage, onAccess });
+
+    await handler(makeRequest({ path: "/shl-no-rcp" }));
+
+    const event = onAccess.mock.calls[0]![0];
+    expect(event.recipient).toBeUndefined();
   });
 });

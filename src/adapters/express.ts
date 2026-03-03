@@ -9,6 +9,7 @@ interface ExpressRequest {
   path: string;
   body?: unknown;
   headers: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | string[] | undefined>;
 }
 
 interface ExpressResponse {
@@ -50,6 +51,7 @@ export function expressMiddleware(
       path: req.path,
       body: req.body,
       headers: normalizeHeaders(req.headers),
+      query: normalizeQuery(req.query),
     };
 
     handle(handlerReq)
@@ -72,6 +74,17 @@ function normalizeHeaders(
   const result: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(headers)) {
     result[key.toLowerCase()] = Array.isArray(value) ? value[0] : value;
+  }
+  return result;
+}
+
+function normalizeQuery(
+  query?: Record<string, string | string[] | undefined>,
+): Record<string, string | undefined> | undefined {
+  if (!query) return undefined;
+  const result: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(query)) {
+    result[key] = Array.isArray(value) ? value[0] : value;
   }
   return result;
 }

@@ -20,6 +20,18 @@ export interface SHLOptions {
   storage: SHLStorage;
   /** Save unencrypted bundle alongside encrypted JWE (development only — do not use in production) */
   debug?: boolean;
+  /**
+   * High-level compliance preset. `"pshd"` enforces:
+   * - Direct retrieval mode (flag U, no manifest)
+   * - Expiration required
+   * - Passcode forbidden (incompatible with flag U)
+   */
+  compliance?: "pshd";
+  /**
+   * Low-level retrieval mode. `"direct"` uses flag U (GET retrieval, no manifest).
+   * `"manifest"` (default) uses flag L (POST to get manifest).
+   */
+  mode?: "manifest" | "direct";
 }
 
 /**
@@ -91,6 +103,8 @@ export interface SHLMetadata {
   expiresAt?: string;
   /** ISO 8601 creation date */
   createdAt: string;
+  /** Retrieval mode: "direct" (flag U) or "manifest" (flag L, default) */
+  mode?: "manifest" | "direct";
 }
 
 /**

@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 import { describe, it, expect, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expressMiddleware } from "../src/adapters/express.js";
@@ -311,6 +313,163 @@ describe("fastifyPlugin", () => {
     expect(statusCode).toBe(200);
     expect(sentHeaders["content-type"]).toBe("application/jose");
     expect(sentBody).toBe("test-attachment-content");
+  });
+});
+
+describe("fastifyPlugin — direct access route", () => {
+  it("registers GET /:shlId route for direct access", () => {
+    const storage = new MockServerStorage();
+    const plugin = fastifyPlugin({ storage });
+
+    const registeredRoutes: string[] = [];
+    const mockFastify = {
+      post(path: string) { registeredRoutes.push(`POST ${path}`); },
+      get(path: string) { registeredRoutes.push(`GET ${path}`); },
+    };
+
+    const done = vi.fn();
+    plugin(mockFastify as never, {}, done);
+
+    expect(registeredRoutes).toContain("GET /:shlId");
+  });
+
+  it("GET /:shlId returns 405 for manifest-mode SHL", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-manifest", { createdAt: new Date().toISOString() });
+    const plugin = fastifyPlugin({ storage });
+
+    const getHandlers = new Map<string, (req: unknown, reply: unknown) => Promise<void>>();
+    const mockFastify = {
+      post() {},
+      get(path: string, handler: (req: unknown, reply: unknown) => Promise<void>) {
+        getHandlers.set(path, handler);
+      },
+    };
+
+    plugin(mockFastify as never, {}, () => {});
+
+    const req = {
+      params: { shlId: "shl-manifest" },
+      headers: {},
+      query: {},
+    };
+
+    let statusCode = 0;
+    let sentBody = "";
+    const reply = {
+      status(code: number) { statusCode = code; return reply; },
+      headers() { return reply; },
+      send(body: string | Buffer) { sentBody = typeof body === "string" ? body : body.toString(); },
+    };
+
+    const directHandler = getHandlers.get("/:shlId")!;
+    await directHandler(req, reply);
+
+    expect(statusCode).toBe(405);
+  });
+
+  it("GET /:shlId returns content for direct-mode SHL", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-direct/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-direct/content.jwe", "direct-content");
+    const plugin = fastifyPlugin({ storage });
+
+    const getHandlers = new Map<string, (req: unknown, reply: unknown) => Promise<void>>();
+    const mockFastify = {
+      post() {},
+      get(path: string, handler: (req: unknown, reply: unknown) => Promise<void>) {
+        getHandlers.set(path, handler);
+      },
+    };
+
+    plugin(mockFastify as never, {}, () => {});
+
+    const req = {
+      params: { shlId: "shl-direct" },
+      headers: {},
+      query: { recipient: "Dr. Test" },
+    };
+
+    let statusCode = 0;
+    let sentBody: string | Buffer = "";
+    let sentHeaders: Record<string, string> = {};
+    const reply = {
+      status(code: number) { statusCode = code; return reply; },
+      headers(h: Record<string, string>) { sentHeaders = h; return reply; },
+      send(body: string | Buffer) { sentBody = body; },
+    };
+
+    const directHandler = getHandlers.get("/:shlId")!;
+    await directHandler(req, reply);
+
+    expect(statusCode).toBe(200);
+    expect(sentHeaders["content-type"]).toBe("application/jose");
+    expect(sentBody).toBe("direct-content");
+  });
+});
+
+describe("expressMiddleware — query param passthrough", () => {
+  it("passes query params through to handler", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-q/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-q/content.jwe", "content");
+
+    const onAccess = vi.fn();
+    const mw = expressMiddleware({ storage, onAccess });
+
+    const req = {
+      method: "GET",
+      path: "/shl-q",
+      headers: {},
+      query: { recipient: "Dr. Express" },
+    };
+
+    let statusCode = 0;
+    const res = {
+      status(code: number) { statusCode = code; return res; },
+      set() { return res; },
+      send() {},
+    };
+
+    mw(req, res);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(statusCode).toBe(200);
+    expect(onAccess).toHaveBeenCalledWith(expect.objectContaining({
+      recipient: "Dr. Express",
+    }));
+  });
+});
+
+describe("lambdaHandler — query param passthrough", () => {
+  it("passes queryStringParameters through to handler", async () => {
+    const storage = new MockServerStorage();
+    storage.files.set("shl-lq/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-lq/content.jwe", "content");
+
+    const onAccess = vi.fn();
+    const handler = lambdaHandler({ storage, pathPrefix: "/shl", onAccess });
+
+    const event = {
+      requestContext: { http: { method: "GET", path: "/shl/shl-lq" } },
+      headers: {},
+      queryStringParameters: { recipient: "Dr. Lambda" },
+    };
+
+    const result = await handler(event);
+    expect(result.statusCode).toBe(200);
+    expect(onAccess).toHaveBeenCalledWith(expect.objectContaining({
+      recipient: "Dr. Lambda",
+    }));
   });
 });
 

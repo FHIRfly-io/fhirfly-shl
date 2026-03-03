@@ -15,6 +15,7 @@ import type {
   ResolvedResult,
   ResolvedCoding,
   ValidationIssue,
+  BundleProfile,
 } from "./types.js";
 
 /** Result of resolving all results — includes build-time warnings. */
@@ -29,7 +30,7 @@ export interface ResultResolutionResult {
 export async function resolveResults(
   results: ResultOptions[],
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
   generateUuid: () => string,
 ): Promise<ResultResolutionResult> {
   const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [];
@@ -168,7 +169,7 @@ function buildObservation(
   resolved: ResolvedResult,
   id: string,
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const resource: Record<string, unknown> = {
     resourceType: "Observation",

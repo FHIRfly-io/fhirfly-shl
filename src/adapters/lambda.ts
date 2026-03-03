@@ -12,6 +12,7 @@ interface APIGatewayProxyEventV2 {
     };
   };
   headers: Record<string, string | undefined>;
+  queryStringParameters?: Record<string, string | undefined>;
   body?: string;
   isBase64Encoded?: boolean;
 }
@@ -85,6 +86,7 @@ export function lambdaHandler(
       path,
       body,
       headers: normalizeHeaders(event.headers),
+      query: event.queryStringParameters,
     };
 
     try {

@@ -5,7 +5,7 @@
  * patient input into a FHIR R4 Patient resource object.
  */
 
-import type { PatientDemographics, PatientFull, PatientShorthand } from "./types.js";
+import type { PatientDemographics, PatientFull, PatientShorthand, BundleProfile } from "./types.js";
 import type { HumanName, ContactPoint, Identifier } from "./fhir-types.js";
 import { patientNarrative } from "./narrative.js";
 
@@ -23,7 +23,7 @@ export function isPatientFull(input: PatientDemographics): input is PatientFull 
 export function normalizePatient(
   input: PatientDemographics,
   id: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   if (isPatientFull(input)) {
     return buildFromFull(input, id, profile);
@@ -34,7 +34,7 @@ export function normalizePatient(
 function buildFromShorthand(
   input: PatientShorthand,
   id: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const patient: Record<string, unknown> = {
     resourceType: "Patient",
@@ -96,7 +96,7 @@ function buildFromShorthand(
 function buildFromFull(
   input: PatientFull,
   id: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const patient: Record<string, unknown> = {
     resourceType: "Patient",

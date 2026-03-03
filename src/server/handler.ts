@@ -62,6 +62,10 @@ export function createHandler(
     if (segments.length === 1 && req.method === "POST") {
       response = await handleManifest(segments[0]!, req, storage, onAccess);
     }
+    // Route: GET /{shlId} → direct access (flag U)
+    else if (segments.length === 1 && req.method === "GET") {
+      response = await handleDirectAccess(segments[0]!, req, storage, onAccess);
+    }
     // Route: GET /{shlId}/content → serve encrypted content
     else if (segments.length === 2 && segments[1] === "content" && req.method === "GET") {
       response = await handleContent(segments[0]!, storage);
@@ -71,9 +75,6 @@ export function createHandler(
       response = await handleAttachment(segments[0]!, segments[2]!, storage);
     }
     // Method not allowed for known paths
-    else if (segments.length === 1 && req.method !== "POST") {
-      response = jsonResponse(405, { error: "Method not allowed. Use POST for manifest requests." });
-    }
     else if (segments.length === 2 && segments[1] === "content" && req.method !== "GET") {
       response = jsonResponse(405, { error: "Method not allowed. Use GET for content requests." });
     }
@@ -178,10 +179,13 @@ async function handleManifest(
 
   // Fire access event (non-blocking)
   if (onAccess) {
+    const recipient = typeof req.query?.["recipient"] === "string" ? req.query["recipient"] : undefined;
     const event = {
       shlId,
       accessCount: updatedMetadata.accessCount ?? 1,
       timestamp: new Date(),
+      mode: "manifest" as const,
+      ...(recipient ? { recipient } : {}),
     };
     // Fire and forget — don't let callback errors break the response
     Promise.resolve(onAccess(event)).catch(() => {});
@@ -194,6 +198,90 @@ async function handleManifest(
   const manifest = JSON.parse(manifestStr) as Manifest;
 
   return jsonResponse(200, manifest);
+}
+
+async function handleDirectAccess(
+  shlId: string,
+  req: HandlerRequest,
+  storage: SHLHandlerConfig["storage"],
+  onAccess?: SHLHandlerConfig["onAccess"],
+): Promise<HandlerResponse> {
+  // Read metadata to check if this is a direct-mode SHL
+  const metadataRaw = await storage.read(`${shlId}/metadata.json`);
+  if (metadataRaw === null) {
+    return jsonResponse(404, { error: "SHL not found" });
+  }
+
+  const metadataStr = typeof metadataRaw === "string" ? metadataRaw : new TextDecoder().decode(metadataRaw);
+  const metadata = JSON.parse(metadataStr) as SHLMetadata;
+
+  // Only direct-mode SHLs support GET retrieval
+  if (metadata.mode !== "direct") {
+    return jsonResponse(405, { error: "Method not allowed. Use POST for manifest requests." });
+  }
+
+  // Access control: expiration, access count (atomic)
+  let accessDeniedReason: "expired" | "exhausted" | null = null;
+  const updatedMetadata = await storage.updateMetadata(shlId, (current) => {
+    if (current.expiresAt) {
+      const expiresAt = new Date(current.expiresAt);
+      if (expiresAt.getTime() <= Date.now()) {
+        accessDeniedReason = "expired";
+        return null;
+      }
+    }
+
+    const currentCount = current.accessCount ?? 0;
+    if (current.maxAccesses !== undefined && currentCount >= current.maxAccesses) {
+      accessDeniedReason = "exhausted";
+      return null;
+    }
+
+    return {
+      ...current,
+      accessCount: currentCount + 1,
+    };
+  });
+
+  if (accessDeniedReason === "expired") {
+    return jsonResponse(410, { error: "SHL has expired" });
+  }
+  if (accessDeniedReason === "exhausted") {
+    return jsonResponse(410, { error: "SHL access limit reached" });
+  }
+  if (updatedMetadata === null) {
+    return jsonResponse(404, { error: "SHL not found" });
+  }
+
+  // Fire access event (non-blocking)
+  if (onAccess) {
+    const recipient = typeof req.query?.["recipient"] === "string" ? req.query["recipient"] : undefined;
+    const event = {
+      shlId,
+      accessCount: updatedMetadata.accessCount ?? 1,
+      timestamp: new Date(),
+      mode: "direct" as const,
+      ...(recipient ? { recipient } : {}),
+    };
+    Promise.resolve(onAccess(event)).catch(() => {});
+  }
+
+  // Serve the encrypted content directly
+  const content = await storage.read(`${shlId}/content.jwe`);
+  if (content === null) {
+    return jsonResponse(404, { error: "Content not found" });
+  }
+
+  const body = typeof content === "string" ? content : new TextDecoder().decode(content);
+
+  return {
+    status: 200,
+    headers: {
+      "content-type": "application/jose",
+      "cache-control": "no-store",
+    },
+    body,
+  };
 }
 
 async function handleContent(

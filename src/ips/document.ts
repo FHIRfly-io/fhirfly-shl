@@ -6,7 +6,8 @@
  */
 
 import { documentNarrative } from "./narrative.js";
-import type { DocumentOptions } from "./types.js";
+import { CODE_SYSTEMS } from "./code-systems.js";
+import type { DocumentOptions, BundleProfile } from "./types.js";
 
 /** Result of resolving all documents. */
 export interface DocumentResolutionResult {
@@ -19,7 +20,7 @@ export interface DocumentResolutionResult {
 export function resolveDocuments(
   documents: DocumentOptions[],
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
   generateUuid: () => string,
 ): DocumentResolutionResult {
   const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [];
@@ -43,8 +44,10 @@ export function resolveDocuments(
     };
 
     // Build DocumentReference resource
-    const typeCode = doc.typeCode ?? "34133-9";
-    const typeDisplay = doc.typeDisplay ?? "Summarization of episode note";
+    // PSHD overrides: type 60591-5, category patient-shared, author=Patient, security PATAST
+    const isPshd = profile === "pshd";
+    const typeCode = isPshd ? "60591-5" : (doc.typeCode ?? "34133-9");
+    const typeDisplay = isPshd ? "Patient summary Document" : (doc.typeDisplay ?? "Summarization of episode note");
 
     const docRefResource: Record<string, unknown> = {
       resourceType: "DocumentReference",
@@ -72,7 +75,30 @@ export function resolveDocuments(
       ],
     };
 
-    if (profile === "ips") {
+    if (isPshd) {
+      // PSHD: no meta.profile, add category + security + author
+      docRefResource.category = [
+        {
+          coding: [
+            {
+              system: CODE_SYSTEMS.CMS_PATIENT_SHARED_CATEGORY,
+              code: "patient-shared",
+              display: "Patient Shared",
+            },
+          ],
+        },
+      ];
+      docRefResource.author = [{ reference: patientRef }];
+      docRefResource.meta = {
+        security: [
+          {
+            system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            code: CODE_SYSTEMS.SECURITY_PATAST,
+            display: "patient asserted",
+          },
+        ],
+      };
+    } else if (profile === "ips") {
       docRefResource.meta = {
         profile: ["http://hl7.org/fhir/uv/ips/StructureDefinition/DocumentReference-uv-ips"],
       };

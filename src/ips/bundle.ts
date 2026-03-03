@@ -3,6 +3,7 @@
 import type {
   PatientDemographics,
   BuildOptions,
+  BundleProfile,
   ValidationResult,
   ValidationIssue,
   MedicationOptions,
@@ -241,12 +242,9 @@ export class Bundle {
   async build(options?: BuildOptions): Promise<Record<string, unknown>> {
     const profile = options?.profile ?? "ips";
     const bundleId = options?.bundleId ?? generateUuid();
-    const compositionId = generateUuid();
     const patientId = generateUuid();
-    const compositionDate = options?.compositionDate ?? new Date().toISOString();
-
+    const timestamp = options?.compositionDate ?? new Date().toISOString();
     const patientFullUrl = `urn:uuid:${patientId}`;
-    const compositionFullUrl = `urn:uuid:${compositionId}`;
 
     // Build Patient resource
     const patientResource = normalizePatient(this._patient, patientId, profile);
@@ -271,6 +269,26 @@ export class Bundle {
       ...resultResult.warnings,
     ];
 
+    // PSHD profile: collection bundle, no Composition
+    if (profile === "pshd") {
+      return this.buildPshdBundle(
+        bundleId,
+        timestamp,
+        patientFullUrl,
+        patientResource,
+        medResult.entries,
+        condResult.entries,
+        allergyResult.entries,
+        immResult.entries,
+        resultResult.entries,
+        docResult.entries,
+      );
+    }
+
+    // IPS / R4 profiles: document bundle with Composition
+    const compositionId = generateUuid();
+    const compositionFullUrl = `urn:uuid:${compositionId}`;
+
     // Build section references for the Composition
     const medRefs = medResult.entries.map((e) => ({ reference: e.fullUrl }));
     const condRefs = condResult.entries.map((e) => ({ reference: e.fullUrl }));
@@ -282,7 +300,7 @@ export class Bundle {
     const composition = this.buildComposition(
       compositionId,
       patientFullUrl,
-      compositionDate,
+      timestamp,
       profile,
       medRefs,
       allergyRefs,
@@ -311,7 +329,7 @@ export class Bundle {
         value: `urn:uuid:${bundleId}`,
       },
       type: "document",
-      timestamp: compositionDate,
+      timestamp,
       entry: entries,
     };
 
@@ -334,6 +352,41 @@ export class Bundle {
         message: "birthDate must be in YYYY-MM-DD format",
         path: "Patient.birthDate",
       });
+    }
+
+    // PSHD-specific checks
+    if (profile === "pshd") {
+      if (this._documents.length === 0) {
+        issues.push({
+          severity: "error",
+          message: "PSHD requires at least one DocumentReference (1..1)",
+          path: "Bundle.entry:DocumentReference",
+        });
+      } else {
+        const hasPdf = this._documents.some(
+          (d) => (d.contentType ?? "application/pdf") === "application/pdf",
+        );
+        if (!hasPdf) {
+          issues.push({
+            severity: "error",
+            message: "PSHD requires at least one PDF document (contentType application/pdf)",
+            path: "DocumentReference.content.attachment.contentType",
+          });
+        }
+      }
+
+      if (!this._patient.gender) {
+        issues.push({
+          severity: "warning",
+          message: "Patient.gender recommended for PSHD demographic matching",
+          path: "Patient.gender",
+        });
+      }
+
+      return {
+        valid: issues.filter((i) => i.severity === "error").length === 0,
+        issues,
+      };
     }
 
     // IPS-specific checks
@@ -428,11 +481,47 @@ export class Bundle {
     return !!(s.given || s.family || s.name);
   }
 
+  private buildPshdBundle(
+    bundleId: string,
+    timestamp: string,
+    patientFullUrl: string,
+    patientResource: Record<string, unknown>,
+    medEntries: Array<{ fullUrl: string; resource: Record<string, unknown> }>,
+    condEntries: Array<{ fullUrl: string; resource: Record<string, unknown> }>,
+    allergyEntries: Array<{ fullUrl: string; resource: Record<string, unknown> }>,
+    immEntries: Array<{ fullUrl: string; resource: Record<string, unknown> }>,
+    resultEntries: Array<{ fullUrl: string; resource: Record<string, unknown> }>,
+    docEntries: Array<{ fullUrl: string; resource: Record<string, unknown> }>,
+  ): Record<string, unknown> {
+    // PSHD: collection bundle, no Composition, Patient first, then clinical, then documents
+    const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [
+      { fullUrl: patientFullUrl, resource: patientResource },
+      ...medEntries,
+      ...condEntries,
+      ...allergyEntries,
+      ...immEntries,
+      ...resultEntries,
+      ...docEntries,
+    ];
+
+    return {
+      resourceType: "Bundle",
+      id: bundleId,
+      identifier: {
+        system: "urn:ietf:rfc:3986",
+        value: `urn:uuid:${bundleId}`,
+      },
+      type: "collection",
+      timestamp,
+      entry: entries,
+    };
+  }
+
   private buildComposition(
     id: string,
     patientRef: string,
     date: string,
-    profile: "ips" | "r4",
+    profile: BundleProfile,
     medRefs: Array<{ reference: string }>,
     allergyRefs: Array<{ reference: string }>,
     condRefs: Array<{ reference: string }>,

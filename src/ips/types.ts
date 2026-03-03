@@ -124,12 +124,15 @@ export type PatientDemographics = PatientShorthand | PatientFull;
 // Build & validation types
 // ---------------------------------------------------------------------------
 
+/** FHIR bundle profile: IPS (full conformance), R4 (plain), or PSHD (CMS patient-shared). */
+export type BundleProfile = "ips" | "r4" | "pshd";
+
 /**
  * Options for building an IPS bundle.
  */
 export interface BuildOptions {
   /** FHIR profile to validate against */
-  profile: "ips" | "r4";
+  profile: BundleProfile;
   /** Bundle identifier (auto-generated if not provided) */
   bundleId?: string;
   /** Composition date (defaults to now) */

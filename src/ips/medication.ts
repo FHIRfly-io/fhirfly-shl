@@ -18,6 +18,7 @@ import type {
   ResolvedCoding,
   ValidationIssue,
   FhirflyClient,
+  BundleProfile,
 } from "./types.js";
 
 /** Result of resolving all medications — includes build-time warnings. */
@@ -32,7 +33,7 @@ export interface MedicationResolutionResult {
 export async function resolveMedications(
   meds: MedicationOptions[],
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
   generateUuid: () => string,
 ): Promise<MedicationResolutionResult> {
   const entries: Array<{ fullUrl: string; resource: Record<string, unknown> }> = [];
@@ -330,7 +331,7 @@ function buildMedicationStatement(
   resolved: ResolvedMedication,
   id: string,
   patientRef: string,
-  profile: "ips" | "r4",
+  profile: BundleProfile,
 ): Record<string, unknown> {
   const resource: Record<string, unknown> = {
     resourceType: "MedicationStatement",

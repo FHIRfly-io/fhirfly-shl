@@ -43,6 +43,29 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
     throw new ValidationError("storage with baseUrl is required");
   }
 
+  // Resolve mode: compliance preset overrides explicit mode
+  let mode = options.mode ?? "manifest";
+  if (options.compliance === "pshd") {
+    mode = "direct";
+    if (passcode) {
+      throw new ValidationError(
+        "PSHD compliance forbids passcode (flag U is incompatible with flag P)",
+      );
+    }
+    if (!expiresAt) {
+      throw new ValidationError(
+        "PSHD compliance requires expiresAt (short-lived links for point-of-care)",
+      );
+    }
+  }
+
+  // Direct mode validation (with or without compliance preset)
+  if (mode === "direct" && passcode) {
+    throw new ValidationError(
+      "Direct mode (flag U) is incompatible with passcode (flag P)",
+    );
+  }
+
   // Generate key and ID
   const key = generateKey();
   const shlId = generateShlId();
@@ -116,35 +139,38 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
     }
   }
 
-  // Build and store manifest
-  const manifest: Manifest = {
-    files: [
-      {
-        contentType: "application/fhir+json;fhirVersion=4.0.1",
-        location: `${baseUrl}/${shlId}/content`,
-      },
-      ...attachments.map((att, i) => ({
-        contentType: att.contentType,
-        location: `${baseUrl}/${shlId}/attachment/${i}`,
-      })),
-    ],
-    status: "finalized",
-    lastUpdated: new Date().toISOString(),
-  };
+  // Build and store manifest (skip for direct mode — no manifest needed)
+  if (mode === "manifest") {
+    const manifest: Manifest = {
+      files: [
+        {
+          contentType: "application/fhir+json;fhirVersion=4.0.1",
+          location: `${baseUrl}/${shlId}/content`,
+        },
+        ...attachments.map((att, i) => ({
+          contentType: att.contentType,
+          location: `${baseUrl}/${shlId}/attachment/${i}`,
+        })),
+      ],
+      status: "finalized",
+      lastUpdated: new Date().toISOString(),
+    };
 
-  try {
-    await storage.store(`${shlId}/manifest.json`, JSON.stringify(manifest));
-  } catch (err) {
-    throw new StorageError(
-      `Failed to store manifest: ${err instanceof Error ? err.message : String(err)}`,
-      "store",
-    );
+    try {
+      await storage.store(`${shlId}/manifest.json`, JSON.stringify(manifest));
+    } catch (err) {
+      throw new StorageError(
+        `Failed to store manifest: ${err instanceof Error ? err.message : String(err)}`,
+        "store",
+      );
+    }
   }
 
   // Build and store metadata
   const metadata: SHLMetadata = {
     createdAt: new Date().toISOString(),
   };
+  if (mode === "direct") metadata.mode = "direct";
   if (passcode) {
     metadata.passcode = createHash("sha256").update(passcode).digest("hex");
   }
@@ -161,7 +187,7 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
   }
 
   // Build SHL payload
-  const flags = buildFlags(passcode);
+  const flags = buildFlags(mode, passcode);
   const shlPayload: Record<string, unknown> = {
     url: `${baseUrl}/${shlId}`,
     key: base64url(key),
@@ -200,10 +226,10 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
 
 /**
  * Build the SHL flags string. Flags are alphabetically sorted.
- * `L` is always set (manifest mode). `P` is set if a passcode is provided.
+ * `U` for direct mode, `L` for manifest mode. `P` is set if a passcode is provided.
  */
-function buildFlags(passcode?: string): string {
-  const flags: string[] = ["L"];
+function buildFlags(mode: "manifest" | "direct", passcode?: string): string {
+  const flags: string[] = [mode === "direct" ? "U" : "L"];
   if (passcode) flags.push("P");
   return flags.sort().join("");
 }

@@ -16,6 +16,7 @@ export type {
 
 // Build & validation types
 export type {
+  BundleProfile,
   BuildOptions,
   ValidationResult,
   ValidationIssue,

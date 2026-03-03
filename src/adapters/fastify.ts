@@ -9,6 +9,7 @@ interface FastifyRequest {
   body?: unknown;
   params: Record<string, string>;
   headers: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | undefined>;
 }
 
 interface FastifyReply {
@@ -65,6 +66,24 @@ export function fastifyPlugin(
         path: `/${shlId}`,
         body: req.body,
         headers: normalizeHeaders(req.headers),
+        query: req.query,
+      };
+
+      const result = await handle(handlerReq);
+      reply.status(result.status).headers(result.headers).send(
+        typeof result.body === "string" ? result.body : Buffer.from(result.body),
+      );
+    });
+
+    // GET /:shlId — direct access endpoint (flag U)
+    fastify.get("/:shlId", async (req: FastifyRequest, reply: FastifyReply) => {
+      const shlId = req.params["shlId"] ?? "";
+      const handlerReq: HandlerRequest = {
+        method: "GET",
+        path: `/${shlId}`,
+        body: undefined,
+        headers: normalizeHeaders(req.headers),
+        query: req.query,
       };
 
       const result = await handle(handlerReq);
@@ -81,6 +100,7 @@ export function fastifyPlugin(
         path: `/${shlId}/content`,
         body: undefined,
         headers: normalizeHeaders(req.headers),
+        query: req.query,
       };
 
       const result = await handle(handlerReq);
@@ -98,6 +118,7 @@ export function fastifyPlugin(
         path: `/${shlId}/attachment/${index}`,
         body: undefined,
         headers: normalizeHeaders(req.headers),
+        query: req.query,
       };
 
       const result = await handle(handlerReq);
