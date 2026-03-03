@@ -504,6 +504,18 @@ export class Bundle {
       ...docEntries,
     ];
 
+    // PSHD spec: strip meta.profile from all resources — recipients must not require it
+    for (const entry of entries) {
+      const meta = entry.resource.meta as Record<string, unknown> | undefined;
+      if (meta?.profile) {
+        delete meta.profile;
+        // Remove empty meta object to keep output clean
+        if (Object.keys(meta).length === 0) {
+          delete entry.resource.meta;
+        }
+      }
+    }
+
     return {
       resourceType: "Bundle",
       id: bundleId,

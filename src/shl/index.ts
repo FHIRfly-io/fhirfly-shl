@@ -14,4 +14,6 @@ export type {
   SHLAttachment,
   ManifestEntry,
   Manifest,
+  ExpirationPreset,
 } from "./types.js";
+export { EXPIRATION_PRESETS } from "./types.js";

@@ -128,6 +128,53 @@ describe("IPS PSHD bundle — DocumentReference constraints", () => {
   });
 });
 
+describe("IPS PSHD bundle — meta.profile stripping", () => {
+  it("no resource in PSHD bundle has meta.profile", async () => {
+    const bundle = new IPS.Bundle(minimalPatient);
+    bundle.addMedication({
+      code: "860975",
+      system: CODE_SYSTEMS.RXNORM,
+      display: "Metformin",
+      status: "active",
+    });
+    bundle.addCondition({
+      code: "E11.9",
+      system: CODE_SYSTEMS.ICD10CM,
+      display: "Type 2 diabetes",
+    });
+    bundle.addAllergy({
+      code: "387207008",
+      system: CODE_SYSTEMS.SNOMED,
+      display: "Ibuprofen",
+    });
+    bundle.addDocument({ title: "Summary", content: pdfContent });
+    const result = await bundle.build({ profile: "pshd" });
+    const entries = result.entry as Array<{ resource: Record<string, unknown> }>;
+
+    for (const entry of entries) {
+      const meta = entry.resource.meta as Record<string, unknown> | undefined;
+      if (meta) {
+        expect(meta.profile).toBeUndefined();
+      }
+    }
+  });
+
+  it("meta.profile is still present in IPS mode", async () => {
+    const bundle = new IPS.Bundle(minimalPatient);
+    bundle.addMedication({
+      code: "860975",
+      system: CODE_SYSTEMS.RXNORM,
+      display: "Metformin",
+      status: "active",
+    });
+    const result = await bundle.build({ profile: "ips" });
+    const entries = result.entry as Array<{ resource: Record<string, unknown> }>;
+    const composition = entries.find((e) => e.resource.resourceType === "Composition")!;
+    const meta = composition.resource.meta as Record<string, unknown> | undefined;
+    expect(meta?.profile).toBeDefined();
+  });
+});
+
 describe("IPS PSHD bundle — validation", () => {
   it("error when no documents added", () => {
     const bundle = new IPS.Bundle(minimalPatient);

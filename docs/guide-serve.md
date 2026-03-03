@@ -82,12 +82,14 @@ For Lambda deployments, use `ServerS3Storage` instead of `ServerLocalStorage` �
 
 ## Server routes
 
-The middleware/plugin handles two routes automatically:
+The middleware/plugin handles these routes automatically:
 
 | Route | Method | What it does |
 |-------|--------|--------------|
-| `/{shlId}` | POST | Validates passcode, checks expiration/access limits, returns manifest |
+| `/{shlId}` | POST | Manifest endpoint — flag `L` (validates passcode, checks expiration/access limits, returns manifest) |
+| `/{shlId}` | GET | Direct retrieval — flag `U` (PSHD and direct-mode SHLs) |
 | `/{shlId}/content` | GET | Returns the encrypted JWE with `Content-Type: application/jose` |
+| `/{shlId}/attachment/:index` | GET | Returns encrypted attachments |
 
 ### Manifest request
 
@@ -168,6 +170,57 @@ const handler = createHandler({ storage });
 // handler.handleManifest(shlId, body) — returns { status, body }
 // handler.handleContent(shlId)        — returns { status, body, contentType }
 ```
+
+---
+
+## Audit Logging
+
+### onAccess callback
+
+The `onAccess` callback fires on every successful access (both manifest and direct modes):
+
+```typescript
+app.use("/shl", expressMiddleware({
+  storage,
+  onAccess: (event) => {
+    console.log(`[SHL] ${event.mode} access to ${event.shlId}`, {
+      recipient: event.recipient,
+      count: event.accessCount,
+    });
+  },
+}));
+```
+
+### AuditableStorage
+
+For storage-level audit logging, implement the `AuditableStorage` interface. This is opt-in — existing `SHLServerStorage` implementations work unchanged.
+
+```typescript
+import { AuditableStorage, AccessEvent, isAuditableStorage } from "@fhirfly-io/shl/server";
+
+class AuditedStorage extends ServerLocalStorage implements AuditableStorage {
+  async onAccess(shlId: string, event: AccessEvent): Promise<void> {
+    await myAuditDb.log({
+      shlId,
+      recipient: event.recipient,
+      ip: event.ip,
+      userAgent: event.userAgent,
+      timestamp: event.timestamp,
+    });
+  }
+}
+```
+
+The server handler detects `AuditableStorage` at runtime via `isAuditableStorage()` and calls `onAccess()` automatically after each successful retrieval. Errors in the audit callback are caught and silenced — they never break the response.
+
+### AccessEvent fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | `number` | Epoch milliseconds when the access occurred |
+| `recipient` | `string?` | From `?recipient=` query parameter |
+| `ip` | `string?` | Client IP address |
+| `userAgent` | `string?` | Client User-Agent header |
 
 ---
 

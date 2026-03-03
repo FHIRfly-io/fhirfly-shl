@@ -147,7 +147,7 @@ const result = await SHL.create({
   storage,
   passcode: "1234",
   label: "Maria Garcia — Patient Summary",
-  expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+  expiresAt: "travel", // 90 days (named preset)
   maxAccesses: 10,
   debug: true, // saves unencrypted bundle for inspection (development only!)
 });
@@ -169,6 +169,22 @@ This does four things:
 ### Debug mode
 
 When `debug: true` is set, `./shl-data/{id}/bundle.json` contains the unencrypted FHIR Bundle. Inspect it or paste it into [validator.fhir.org](https://validator.fhir.org/) to check compliance. Remove `debug: true` before deploying to production.
+
+### Expiration presets
+
+Instead of calculating `Date` objects, use named presets:
+
+| Preset | Duration | Use case |
+|--------|----------|----------|
+| `"point-of-care"` | 15 minutes | Walk-in, urgent care |
+| `"appointment"` | 24 hours | Scheduled visit, pre-visit |
+| `"travel"` | 90 days | International travel, ongoing care |
+| `"permanent"` | No expiration | Persistent health summary |
+
+```typescript
+expiresAt: "point-of-care"                     // named preset
+expiresAt: new Date(Date.now() + 30 * 60_000)  // raw Date still works
+```
 
 ### Storage options
 

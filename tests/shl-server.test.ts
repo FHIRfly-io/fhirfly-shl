@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { createHandler } from "../src/server/handler.js";
-import type { SHLServerStorage, HandlerRequest } from "../src/server/types.js";
+import type { SHLServerStorage, AuditableStorage, HandlerRequest, AccessEvent } from "../src/server/types.js";
 import type { SHLMetadata, Manifest } from "../src/shl/types.js";
 
 /** Hash a passcode with SHA-256 (matches create.ts storage format). */
@@ -594,5 +594,76 @@ describe("createHandler — recipient passthrough on manifest", () => {
 
     const event = onAccess.mock.calls[0]![0];
     expect(event.recipient).toBeUndefined();
+  });
+});
+
+/** Mock auditable storage (extends MockServerStorage with onAccess). */
+class MockAuditableStorage extends MockServerStorage implements AuditableStorage {
+  accessLog: Array<{ shlId: string; event: AccessEvent }> = [];
+
+  async onAccess(shlId: string, event: AccessEvent): Promise<void> {
+    this.accessLog.push({ shlId, event });
+  }
+}
+
+describe("createHandler — AuditableStorage", () => {
+  it("calls storage.onAccess on manifest retrieval when storage is auditable", async () => {
+    const storage = new MockAuditableStorage();
+    seedStorage(storage, "shl-audit", { createdAt: new Date().toISOString() });
+    const handler = createHandler({ storage });
+
+    await handler(makeRequest({ path: "/shl-audit" }));
+
+    expect(storage.accessLog).toHaveLength(1);
+    expect(storage.accessLog[0]!.shlId).toBe("shl-audit");
+    expect(storage.accessLog[0]!.event.mode).toBe("manifest");
+  });
+
+  it("calls storage.onAccess on direct retrieval when storage is auditable", async () => {
+    const storage = new MockAuditableStorage();
+    storage.files.set("shl-direct-audit/metadata.json", JSON.stringify({
+      createdAt: new Date().toISOString(),
+      mode: "direct",
+    }));
+    storage.files.set("shl-direct-audit/content.jwe", "content");
+    const handler = createHandler({ storage });
+
+    await handler(makeRequest({ method: "GET", path: "/shl-direct-audit" }));
+
+    expect(storage.accessLog).toHaveLength(1);
+    expect(storage.accessLog[0]!.shlId).toBe("shl-direct-audit");
+    expect(storage.accessLog[0]!.event.mode).toBe("direct");
+  });
+
+  it("non-auditable storage works without errors", async () => {
+    const storage = new MockServerStorage();
+    seedStorage(storage, "shl-plain", { createdAt: new Date().toISOString() });
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({ path: "/shl-plain" }));
+    expect(res.status).toBe(200);
+  });
+
+  it("does not call storage.onAccess on access denial", async () => {
+    const storage = new MockAuditableStorage();
+    seedStorage(storage, "shl-denied", {
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date("2020-01-01").toISOString(),
+    });
+    const handler = createHandler({ storage });
+
+    await handler(makeRequest({ path: "/shl-denied" }));
+
+    expect(storage.accessLog).toHaveLength(0);
+  });
+
+  it("storage.onAccess error does not break response", async () => {
+    const storage = new MockAuditableStorage();
+    storage.onAccess = vi.fn().mockRejectedValue(new Error("audit failed"));
+    seedStorage(storage, "shl-err", { createdAt: new Date().toISOString() });
+    const handler = createHandler({ storage });
+
+    const res = await handler(makeRequest({ path: "/shl-err" }));
+    expect(res.status).toBe(200);
   });
 });

@@ -1,6 +1,24 @@
 // Copyright 2026 FHIRfly.io LLC. All rights reserved.
 // Licensed under the MIT License. See LICENSE file in the project root.
 /**
+ * Named expiration presets for common SHL use cases.
+ *
+ * - `"point-of-care"` — 15 minutes (in-person sharing at a clinic or pharmacy)
+ * - `"appointment"` — 24 hours (share before a scheduled visit)
+ * - `"travel"` — 90 days (carry health records while traveling)
+ * - `"permanent"` — no expiration (long-lived link)
+ */
+export type ExpirationPreset = "point-of-care" | "appointment" | "travel" | "permanent";
+
+/** Duration in milliseconds for each expiration preset. 0 = no expiration. */
+export const EXPIRATION_PRESETS: Record<ExpirationPreset, number> = {
+  "point-of-care": 15 * 60 * 1000,          // 15 minutes
+  "appointment": 24 * 60 * 60 * 1000,        // 24 hours
+  "travel": 90 * 24 * 60 * 60 * 1000,        // 90 days
+  "permanent": 0,                             // no expiration
+};
+
+/**
  * Options for creating a SMART Health Link.
  */
 export interface SHLOptions {
@@ -10,8 +28,11 @@ export interface SHLOptions {
   attachments?: SHLAttachment[];
   /** Optional passcode to protect the link */
   passcode?: string;
-  /** Expiration date for the link */
-  expiresAt?: Date;
+  /**
+   * Expiration for the link. Accepts a `Date` for an exact time,
+   * or an `ExpirationPreset` string for a named duration from now.
+   */
+  expiresAt?: Date | ExpirationPreset;
   /** Maximum number of times the link can be accessed */
   maxAccesses?: number;
   /** Label for the SHL (shown in viewer apps, max 80 chars) */

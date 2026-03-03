@@ -1,7 +1,10 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { SHL } from "../src/index.js";
-import type { SHLStorage } from "../src/shl/types.js";
+import type { SHLStorage, ExpirationPreset } from "../src/shl/types.js";
+import { EXPIRATION_PRESETS } from "../src/shl/types.js";
 import { base64urlDecode, decryptBundle } from "../src/shl/crypto.js";
 import type { Manifest, SHLMetadata } from "../src/shl/types.js";
 
@@ -390,5 +393,77 @@ describe("SHL.create() — validation", () => {
     await expect(
       SHL.create({ bundle: testBundle, storage: brokenStorage }),
     ).rejects.toThrow("storage with baseUrl is required");
+  });
+});
+
+describe("SHL.create() — expiration presets", () => {
+  it("point-of-care preset resolves to ~15 minutes from now", async () => {
+    const storage = new MockStorage();
+    const before = Date.now();
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: "point-of-care" });
+    const after = Date.now();
+
+    expect(result.expiresAt).toBeDefined();
+    const expiresMs = result.expiresAt!.getTime();
+    const expectedMin = before + EXPIRATION_PRESETS["point-of-care"];
+    const expectedMax = after + EXPIRATION_PRESETS["point-of-care"];
+    expect(expiresMs).toBeGreaterThanOrEqual(expectedMin);
+    expect(expiresMs).toBeLessThanOrEqual(expectedMax);
+  });
+
+  it("appointment preset resolves to ~24 hours from now", async () => {
+    const storage = new MockStorage();
+    const before = Date.now();
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: "appointment" });
+
+    expect(result.expiresAt).toBeDefined();
+    const expiresMs = result.expiresAt!.getTime();
+    expect(expiresMs).toBeGreaterThanOrEqual(before + EXPIRATION_PRESETS["appointment"]);
+  });
+
+  it("travel preset resolves to ~90 days from now", async () => {
+    const storage = new MockStorage();
+    const before = Date.now();
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: "travel" });
+
+    expect(result.expiresAt).toBeDefined();
+    const expiresMs = result.expiresAt!.getTime();
+    expect(expiresMs).toBeGreaterThanOrEqual(before + EXPIRATION_PRESETS["travel"]);
+  });
+
+  it("permanent preset sets no expiration", async () => {
+    const storage = new MockStorage();
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: "permanent" });
+
+    expect(result.expiresAt).toBeUndefined();
+
+    const payload = parseShlPayload(result.url);
+    expect(payload["exp"]).toBeUndefined();
+  });
+
+  it("raw Date passthrough still works", async () => {
+    const storage = new MockStorage();
+    const expires = new Date("2027-06-15T00:00:00Z");
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: expires });
+
+    expect(result.expiresAt).toEqual(expires);
+  });
+
+  it("preset stores expiresAt in metadata", async () => {
+    const storage = new MockStorage();
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: "point-of-care" });
+
+    const metadataJson = storage.files.get(`${result.id}/metadata.json`) as string;
+    const metadata = JSON.parse(metadataJson) as SHLMetadata;
+    expect(metadata.expiresAt).toBeDefined();
+  });
+
+  it("preset sets exp in SHL payload", async () => {
+    const storage = new MockStorage();
+    const result = await SHL.create({ bundle: testBundle, storage, expiresAt: "appointment" });
+
+    const payload = parseShlPayload(result.url);
+    expect(payload["exp"]).toBeDefined();
+    expect(typeof payload["exp"]).toBe("number");
   });
 });

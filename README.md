@@ -90,12 +90,42 @@ const result = await SHL.create({
   storage,
   passcode: "1234",
   label: "Maria's Health Summary",
+  expiresAt: "travel", // 90 days — or use "point-of-care" (15min), "appointment" (24h), "permanent"
 });
 
 console.log(result.url);      // shlink:/eyJ1cmwiOiJodHRwczovL...
 console.log(result.qrCode);   // data:image/png;base64,...
 console.log(result.passcode); // "1234"
 ```
+
+### Expiration Presets
+
+Instead of calculating `Date` objects, use named presets:
+
+```typescript
+await SHL.create({ bundle, storage, expiresAt: "point-of-care" }); // 15 minutes
+await SHL.create({ bundle, storage, expiresAt: "appointment" });    // 24 hours
+await SHL.create({ bundle, storage, expiresAt: "travel" });         // 90 days
+await SHL.create({ bundle, storage, expiresAt: "permanent" });      // no expiration
+await SHL.create({ bundle, storage, expiresAt: new Date(...) });    // raw Date still works
+```
+
+### PSHD Compliance
+
+For CMS-aligned patient-to-provider sharing at the point of care:
+
+```typescript
+const fhirBundle = await bundle.build({ profile: "pshd" }); // strips meta.profile, uses collection bundle
+
+const result = await SHL.create({
+  bundle: fhirBundle,
+  storage,
+  compliance: "pshd",
+  expiresAt: "point-of-care",
+});
+```
+
+See the [PSHD Guide](https://fhirfly.io/docs/shl/pshd) for full details.
 
 ## Storage Adapters
 
@@ -170,6 +200,29 @@ app.listen(3000);
 ```
 
 Also available for Fastify (`@fhirfly-io/shl/fastify`) and Lambda (`@fhirfly-io/shl/lambda`).
+
+### Audit Logging
+
+Use `AuditableStorage` to capture access events at the storage level — plug in any logging backend:
+
+```typescript
+import { AuditableStorage, SHLServerStorage, AccessEvent } from "@fhirfly-io/shl/server";
+
+class MyAuditStorage extends ServerLocalStorage implements AuditableStorage {
+  async onAccess(shlId: string, event: AccessEvent): Promise<void> {
+    await db.auditLog.insert({
+      shlId,
+      recipient: event.recipient,
+      ip: event.ip,
+      timestamp: event.timestamp,
+    });
+  }
+}
+
+app.use("/shl", expressMiddleware({ storage: new MyAuditStorage({ ... }) }));
+```
+
+The server handler detects `AuditableStorage` at runtime via `isAuditableStorage()` — existing storage implementations work unchanged.
 
 ## Live Exercise
 

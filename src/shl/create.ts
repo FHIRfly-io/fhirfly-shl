@@ -1,6 +1,7 @@
 // Copyright 2026 FHIRfly.io LLC. All rights reserved.
 // Licensed under the MIT License. See LICENSE file in the project root.
-import type { SHLOptions, SHLResult, Manifest, SHLMetadata } from "./types.js";
+import type { SHLOptions, SHLResult, Manifest, SHLMetadata, ExpirationPreset } from "./types.js";
+import { EXPIRATION_PRESETS } from "./types.js";
 import { ValidationError, StorageError, EncryptionError } from "../errors.js";
 import { generateKey, generateShlId, encryptBundle, encryptContent, base64url } from "./crypto.js";
 import { generateQRCode } from "./qrcode.js";
@@ -33,7 +34,20 @@ import { createHash } from "node:crypto";
  * ```
  */
 export async function create(options: SHLOptions): Promise<SHLResult> {
-  const { bundle, passcode, expiresAt, maxAccesses, label, storage, debug } = options;
+  const { bundle, passcode, maxAccesses, label, storage, debug } = options;
+
+  // Resolve expiration preset to a Date
+  let expiresAt: Date | undefined;
+  if (typeof options.expiresAt === "string") {
+    const preset = options.expiresAt as ExpirationPreset;
+    const durationMs = EXPIRATION_PRESETS[preset];
+    if (durationMs === undefined) {
+      throw new ValidationError(`Unknown expiration preset: "${preset}"`);
+    }
+    expiresAt = durationMs > 0 ? new Date(Date.now() + durationMs) : undefined;
+  } else {
+    expiresAt = options.expiresAt;
+  }
 
   // Validate inputs
   if (!bundle || typeof bundle !== "object") {
@@ -52,7 +66,7 @@ export async function create(options: SHLOptions): Promise<SHLResult> {
         "PSHD compliance forbids passcode (flag U is incompatible with flag P)",
       );
     }
-    if (!expiresAt) {
+    if (!expiresAt && options.expiresAt !== "permanent") {
       throw new ValidationError(
         "PSHD compliance requires expiresAt (short-lived links for point-of-care)",
       );

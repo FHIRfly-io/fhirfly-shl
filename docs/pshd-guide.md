@@ -76,7 +76,7 @@ const result = await SHL.create({
     baseUrl: "https://shl.example.com",
   }),
   compliance: "pshd",
-  expiresAt: new Date(Date.now() + 15 * 60_000), // 15 minutes
+  expiresAt: "point-of-care", // 15 minutes (named preset)
   label: "Jane Doe - Patient Summary",
 });
 
@@ -253,16 +253,23 @@ PSHD links are designed for point-of-care use. Choose expiration based on the sh
 | Pre-visit preparation | 24 hours | Shared day before appointment |
 | Emergency transfer | 30-60 minutes | Patient transferred between facilities |
 
+Use named presets or raw `Date` objects:
+
 ```typescript
-// Point-of-care: 15 minutes
-const pointOfCare = new Date(Date.now() + 15 * 60_000);
+// Named presets (v0.5.0+)
+expiresAt: "point-of-care"  // 15 minutes
+expiresAt: "appointment"    // 24 hours
 
-// Scheduled appointment: 4 hours
-const appointment = new Date(Date.now() + 4 * 60 * 60_000);
-
-// Pre-visit: 24 hours
-const preVisit = new Date(Date.now() + 24 * 60 * 60_000);
+// Raw Date (still works)
+expiresAt: new Date(Date.now() + 4 * 60 * 60_000) // 4 hours
 ```
+
+| Preset | Duration | Typical Use |
+|--------|----------|-------------|
+| `"point-of-care"` | 15 minutes | Walk-in, urgent care |
+| `"appointment"` | 24 hours | Scheduled visit, pre-visit prep |
+| `"travel"` | 90 days | International travel |
+| `"permanent"` | No expiration | Not recommended for PSHD |
 
 You can combine expiration with `maxAccesses` for defense in depth:
 
@@ -367,27 +374,11 @@ The new `GET /{shlId}` route only serves direct-mode SHLs. If a GET request hits
 
 ## Audit Logging
 
-The `onAccess` callback fires on every successful access (both manifest and direct modes).
+There are two ways to capture access events:
 
-### AccessEvent Fields
+### 1. `onAccess` callback (handler-level)
 
-```typescript
-interface AccessEvent {
-  shlId: string;       // SHL identifier
-  accessCount: number; // access count after this request
-  timestamp: Date;     // when the access occurred
-  mode?: "manifest" | "direct";  // retrieval mode
-  recipient?: string;  // from ?recipient= query param
-}
-```
-
-### Recipient Tracking
-
-SHL viewers can pass a `?recipient=` query parameter to identify the provider scanning the QR code. The SDK forwards this to your `onAccess` callback:
-
-```
-GET /shl/{shlId}?recipient=Dr.%20Smith
-```
+The `onAccess` callback fires on every successful access (both manifest and direct modes):
 
 ```typescript
 onAccess: (event) => {
@@ -401,6 +392,48 @@ onAccess: (event) => {
     });
   }
 }
+```
+
+### 2. `AuditableStorage` interface (storage-level)
+
+For storage-level audit logging, implement `AuditableStorage`. This is opt-in — existing `SHLServerStorage` implementations work unchanged.
+
+```typescript
+import { AuditableStorage, AccessEvent, isAuditableStorage } from "@fhirfly-io/shl/server";
+
+class AuditedStorage extends ServerLocalStorage implements AuditableStorage {
+  async onAccess(shlId: string, event: AccessEvent): Promise<void> {
+    await db.auditLog.insert({
+      shlId,
+      recipient: event.recipient,
+      ip: event.ip,
+      userAgent: event.userAgent,
+      timestamp: event.timestamp,
+    });
+  }
+}
+
+// The server handler auto-detects AuditableStorage via isAuditableStorage()
+app.use("/shl", expressMiddleware({ storage: new AuditedStorage({ ... }) }));
+```
+
+Both mechanisms can be used together — the handler-level `onAccess` fires first, then the storage-level `onAccess`.
+
+### AccessEvent Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | `number` | Epoch milliseconds |
+| `recipient` | `string?` | From `?recipient=` query parameter |
+| `ip` | `string?` | Client IP address |
+| `userAgent` | `string?` | Client User-Agent header |
+
+### Recipient Tracking
+
+SHL viewers pass `?recipient=` to identify the provider scanning the QR code:
+
+```
+GET /shl/{shlId}?recipient=Dr.%20Smith
 ```
 
 This supports the PSHD spec's requirement for audit trails of who accessed patient-shared data and when.
@@ -422,6 +455,10 @@ All changes are backward-compatible. Existing code continues to work without mod
 | Type | Export | Description |
 |---|---|---|
 | `BundleProfile` | `IPS.BundleProfile` | `"ips" \| "r4" \| "pshd"` |
+| `ExpirationPreset` | `SHL.ExpirationPreset` | `"point-of-care" \| "appointment" \| "travel" \| "permanent"` |
+| `AuditableStorage` | `import from "@fhirfly-io/shl/server"` | Storage with `onAccess()` hook |
+| `AccessEvent` | `import from "@fhirfly-io/shl/server"` | Audit event payload |
+| `isAuditableStorage()` | `import from "@fhirfly-io/shl/server"` | Runtime type guard for `AuditableStorage` |
 
 ### New AccessEvent Fields
 

@@ -58,6 +58,28 @@ export interface SHLServerStorage extends SHLStorage {
 }
 
 /**
+ * Extended storage interface that includes audit logging.
+ *
+ * When a storage backend implements `AuditableStorage`, the server handler
+ * will automatically call `onAccess()` after each successful retrieval.
+ * This is in addition to the `onAccess` callback on `SHLHandlerConfig`.
+ *
+ * Existing `SHLServerStorage` implementations continue to work unchanged —
+ * audit logging is opt-in.
+ */
+export interface AuditableStorage extends SHLServerStorage {
+  /** Called after each successful SHL retrieval. */
+  onAccess(shlId: string, event: AccessEvent): Promise<void>;
+}
+
+/**
+ * Type guard: checks if a storage backend implements AuditableStorage.
+ */
+export function isAuditableStorage(storage: SHLServerStorage): storage is AuditableStorage {
+  return typeof (storage as AuditableStorage).onAccess === "function";
+}
+
+/**
  * CORS configuration for the SHL server handler.
  *
  * By default, the handler adds permissive CORS headers to all responses

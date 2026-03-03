@@ -6,6 +6,7 @@ import type {
   SHLHandlerConfig,
   CorsConfig,
 } from "./types.js";
+import { isAuditableStorage } from "./types.js";
 import type { SHLMetadata, Manifest } from "../shl/types.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 
@@ -178,17 +179,21 @@ async function handleManifest(
   }
 
   // Fire access event (non-blocking)
+  const recipient = typeof req.query?.["recipient"] === "string" ? req.query["recipient"] : undefined;
+  const accessEvent = {
+    shlId,
+    accessCount: updatedMetadata.accessCount ?? 1,
+    timestamp: new Date(),
+    mode: "manifest" as const,
+    ...(recipient ? { recipient } : {}),
+  };
   if (onAccess) {
-    const recipient = typeof req.query?.["recipient"] === "string" ? req.query["recipient"] : undefined;
-    const event = {
-      shlId,
-      accessCount: updatedMetadata.accessCount ?? 1,
-      timestamp: new Date(),
-      mode: "manifest" as const,
-      ...(recipient ? { recipient } : {}),
-    };
     // Fire and forget — don't let callback errors break the response
-    Promise.resolve(onAccess(event)).catch(() => {});
+    Promise.resolve(onAccess(accessEvent)).catch(() => {});
+  }
+  // If storage is auditable, also fire the storage-level audit hook
+  if (isAuditableStorage(storage)) {
+    Promise.resolve(storage.onAccess(shlId, accessEvent)).catch(() => {});
   }
 
   // Return manifest
@@ -254,16 +259,20 @@ async function handleDirectAccess(
   }
 
   // Fire access event (non-blocking)
+  const recipient = typeof req.query?.["recipient"] === "string" ? req.query["recipient"] : undefined;
+  const directAccessEvent = {
+    shlId,
+    accessCount: updatedMetadata.accessCount ?? 1,
+    timestamp: new Date(),
+    mode: "direct" as const,
+    ...(recipient ? { recipient } : {}),
+  };
   if (onAccess) {
-    const recipient = typeof req.query?.["recipient"] === "string" ? req.query["recipient"] : undefined;
-    const event = {
-      shlId,
-      accessCount: updatedMetadata.accessCount ?? 1,
-      timestamp: new Date(),
-      mode: "direct" as const,
-      ...(recipient ? { recipient } : {}),
-    };
-    Promise.resolve(onAccess(event)).catch(() => {});
+    Promise.resolve(onAccess(directAccessEvent)).catch(() => {});
+  }
+  // If storage is auditable, also fire the storage-level audit hook
+  if (isAuditableStorage(storage)) {
+    Promise.resolve(storage.onAccess(shlId, directAccessEvent)).catch(() => {});
   }
 
   // Serve the encrypted content directly

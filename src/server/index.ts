@@ -2,8 +2,10 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 export { createHandler } from "./handler.js";
 export { ServerLocalStorage, ServerS3Storage, ServerAzureStorage, ServerGCSStorage } from "./storage.js";
+export { isAuditableStorage } from "./types.js";
 export type {
   SHLServerStorage,
+  AuditableStorage,
   SHLHandlerConfig,
   CorsConfig,
   HandlerRequest,
