@@ -5,8 +5,9 @@
 # Checks:
 #   1. Identity leak scan — blocks commits containing personal identity patterns
 #   2. Secret detection — blocks commits containing API keys or tokens
-#   3. TypeScript typecheck — ensures types are sound
-#   4. Lint — ensures code style compliance
+#   3. Copyright header — ensures all source files have the copyright notice
+#   4. TypeScript typecheck — ensures types are sound
+#   5. Lint — ensures code style compliance
 #
 # Setup:
 #   git config core.hooksPath .hooks
@@ -80,7 +81,31 @@ if [ -n "$STAGED_FILES" ]; then
   fi
 fi
 
-# --- 3. TypeScript typecheck ---
+# --- 3. Copyright header check ---
+COPYRIGHT_PATTERN="^// Copyright [0-9]{4} FHIRfly\.io LLC\. All rights reserved\.$"
+MISSING_COPYRIGHT=""
+if [ -n "$STAGED_FILES" ]; then
+  MISSING_COPYRIGHT=$(echo "$STAGED_FILES" | grep -E '\.(ts|tsx|js|jsx)$' | while read -r file; do
+    if [ -f "$file" ]; then
+      FIRST_LINE=$(git show ":$file" 2>/dev/null | head -1)
+      if ! echo "$FIRST_LINE" | grep -Eq "$COPYRIGHT_PATTERN"; then
+        echo "$file"
+      fi
+    fi
+  done)
+fi
+
+if [ -n "$MISSING_COPYRIGHT" ]; then
+  echo -e "${RED}BLOCKED: Missing or incorrect copyright header in:${NC}"
+  for f in $MISSING_COPYRIGHT; do
+    echo -e "  ${RED}$f${NC}"
+  done
+  echo -e "${YELLOW}Expected line 1: // Copyright $(date +%Y) FHIRfly.io LLC. All rights reserved.${NC}"
+  echo -e "${YELLOW}Expected line 2: // Licensed under the MIT License. See LICENSE file in the project root.${NC}"
+  FAILED=1
+fi
+
+# --- 4. TypeScript typecheck ---
 if [ -f "tsconfig.json" ]; then
   echo -e "${GREEN}Running typecheck...${NC}"
   if ! npm run typecheck --silent 2>&1; then
@@ -89,7 +114,7 @@ if [ -f "tsconfig.json" ]; then
   fi
 fi
 
-# --- 4. Lint ---
+# --- 5. Lint ---
 if npm run lint --silent 2>&1; then
   : # success
 else
