@@ -1,3 +1,5 @@
+// Copyright 2026 FHIRfly.io LLC. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
 import { defineConfig } from "tsup";
 
 export default defineConfig({
@@ -12,7 +14,7 @@ export default defineConfig({
   format: ["cjs", "esm"],
   dts: true,
   clean: true,
-  sourcemap: true,
+  sourcemap: false,
   splitting: true,
   treeshake: true,
   minify: false,
