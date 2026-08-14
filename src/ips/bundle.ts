@@ -20,6 +20,7 @@ import { resolveAllergies, validateAllergyFromResource } from "./allergy.js";
 import { resolveImmunizations, validateImmunizationFromResource } from "./immunization.js";
 import { resolveResults, validateResultFromResource } from "./result.js";
 import { resolveDocuments } from "./document.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * Builder for creating IPS (International Patient Summary) FHIR bundles.
@@ -696,5 +697,7 @@ export class Bundle {
 }
 
 function generateUuid(): string {
-  return crypto.randomUUID();
+  // node:crypto, not the WebCrypto global — globalThis.crypto is undefined on
+  // Node 18, which package.json still supports (engines.node >= 18).
+  return randomUUID();
 }
