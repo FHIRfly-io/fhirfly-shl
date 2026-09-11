@@ -8,10 +8,13 @@
 #
 # Setup: git config core.hooksPath .hooks
 #
+# This file is kept identical across all four SDK repos.
+#
 
 set -e
 
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 MSG_FILE="$1"
@@ -33,12 +36,28 @@ for candidate in ".identity-blocklist" "../.config/identity-blocklist"; do
   fi
 done
 
+PATTERNS=""
 if [ -n "$BLOCKLIST" ]; then
-  PATTERNS=$(grep -v '^\s*#' "$BLOCKLIST" | grep -v '^\s*$' | paste -sd'|' -)
-  if [ -n "$PATTERNS" ] && grep -iEq "$PATTERNS" "$MSG_FILE"; then
-    echo -e "${RED}BLOCKED: Commit message contains identity patterns.${NC}"
-    FAILED=1
+  PATTERNS=$(grep -v '^[[:space:]]*#' "$BLOCKLIST" | grep -v '^[[:space:]]*$' | paste -sd'|' - || true)
+fi
+
+if [ -z "$PATTERNS" ]; then
+  # FAIL CLOSED — see the matching note in .hooks/pre-commit.
+  echo -e "${RED}BLOCKED: identity blocklist missing or empty — cannot scan the commit message.${NC}"
+  if [ -z "$BLOCKLIST" ]; then
+    echo -e "${RED}  No blocklist found. Looked for, relative to the repo root:${NC}"
+    echo -e "${YELLOW}    ./.identity-blocklist           (repo-local override, gitignored)${NC}"
+    echo -e "${YELLOW}    ../.config/identity-blocklist   (shared by all four SDK repos)${NC}"
+  else
+    echo -e "${RED}  Found '$BLOCKLIST' but it contains no active patterns.${NC}"
   fi
+  echo -e "${YELLOW}  This file is deliberately untracked and lives outside the repo, so it${NC}"
+  echo -e "${YELLOW}  has no copy in any remote. Restore it from backup before committing.${NC}"
+  echo -e "${YELLOW}  Deliberate bypass: git commit --no-verify${NC}"
+  FAILED=1
+elif grep -iEq "$PATTERNS" "$MSG_FILE"; then
+  echo -e "${RED}BLOCKED: Commit message contains identity patterns.${NC}"
+  FAILED=1
 fi
 
 if [ $FAILED -ne 0 ]; then

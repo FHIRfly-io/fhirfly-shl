@@ -13,8 +13,12 @@
 #   git config core.hooksPath .hooks
 #
 # Identity blocklist (not checked in — lives outside the repo):
-#   ../.config/identity-blocklist            (shared across all SDK repos)
 #   .identity-blocklist                      (repo-local override, gitignored)
+#   ../.config/identity-blocklist            (shared across all SDK repos)
+#
+# This file is kept identical across all four SDK repos. The licence name in
+# the copyright check is read from package.json, so no per-repo edits needed.
+# If you change it, change it in all four.
 #
 
 set -e
@@ -27,8 +31,6 @@ NC='\033[0m'
 FAILED=0
 
 # --- 1. Identity leak scan ---
-# Look for blocklist: repo-local first, then shared user config
-# Searches $HOME and common home dirs to handle containers where $HOME is overridden
 BLOCKLIST=""
 for candidate in ".identity-blocklist" "../.config/identity-blocklist"; do
   if [ -f "$candidate" ]; then
@@ -37,33 +39,49 @@ for candidate in ".identity-blocklist" "../.config/identity-blocklist"; do
   fi
 done
 
+PATTERNS=""
 if [ -n "$BLOCKLIST" ]; then
-  # Build grep pattern from blocklist (skip comments and empty lines)
-  PATTERNS=$(grep -v '^\s*#' "$BLOCKLIST" | grep -v '^\s*$' | paste -sd'|' -)
-  if [ -n "$PATTERNS" ]; then
-    # Check only staged file contents (not the whole repo)
-    LEAKED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | while read -r file; do
-      if [ -f "$file" ] && git show ":$file" 2>/dev/null | grep -iEq "$PATTERNS"; then
-        echo "$file"
-      fi
-    done)
+  PATTERNS=$(grep -v '^[[:space:]]*#' "$BLOCKLIST" | grep -v '^[[:space:]]*$' | paste -sd'|' - || true)
+fi
 
-    if [ -n "$LEAKED_FILES" ]; then
-      echo -e "${RED}BLOCKED: Identity patterns found in staged files:${NC}"
-      for f in $LEAKED_FILES; do
-        echo -e "  ${RED}$f${NC}"
-        git show ":$f" | grep -inE "$PATTERNS" | head -3 | while read -r line; do
-          echo -e "    ${YELLOW}$line${NC}"
-        done
-      done
-      echo -e "${RED}Edit ../.config/identity-blocklist to update patterns.${NC}"
-      FAILED=1
+if [ -z "$PATTERNS" ]; then
+  # FAIL CLOSED. A missing or empty blocklist previously skipped this check in
+  # silence, so the hook printed "All pre-commit checks passed" while scanning
+  # nothing at all — on a PUBLIC repo. Never do that again.
+  echo -e "${RED}BLOCKED: identity blocklist missing or empty — cannot scan for identity leaks.${NC}"
+  if [ -z "$BLOCKLIST" ]; then
+    echo -e "${RED}  No blocklist found. Looked for, relative to the repo root:${NC}"
+    echo -e "${YELLOW}    ./.identity-blocklist           (repo-local override, gitignored)${NC}"
+    echo -e "${YELLOW}    ../.config/identity-blocklist   (shared by all four SDK repos)${NC}"
+  else
+    echo -e "${RED}  Found '$BLOCKLIST' but it contains no active patterns.${NC}"
+  fi
+  echo -e "${YELLOW}  This file is deliberately untracked and lives outside the repo, so it${NC}"
+  echo -e "${YELLOW}  has no copy in any remote. Restore it from backup before committing.${NC}"
+  echo -e "${YELLOW}  Deliberate bypass: git commit --no-verify${NC}"
+  FAILED=1
+else
+  LEAKED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | while read -r file; do
+    if [ -f "$file" ] && git show ":$file" 2>/dev/null | grep -iEq "$PATTERNS"; then
+      echo "$file"
     fi
+  done)
+
+  if [ -n "$LEAKED_FILES" ]; then
+    echo -e "${RED}BLOCKED: Identity patterns found in staged files:${NC}"
+    for f in $LEAKED_FILES; do
+      echo -e "  ${RED}$f${NC}"
+      git show ":$f" | grep -inE "$PATTERNS" | head -3 | while read -r line; do
+        echo -e "    ${YELLOW}$line${NC}"
+      done
+    done
+    echo -e "${RED}Edit ../.config/identity-blocklist to update patterns.${NC}"
+    FAILED=1
   fi
 fi
 
 # --- 2. Secret detection ---
-SECRET_PATTERNS='ffly_(dev|live|test)_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|sk-[a-zA-Z0-9]{20,}|-----BEGIN (RSA |EC )?PRIVATE KEY'
+SECRET_PATTERNS='ffly_(dev|live|test)_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|sk-[a-zA-Z0-9]{20,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY'
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 if [ -n "$STAGED_FILES" ]; then
   SECRET_HITS=$(echo "$STAGED_FILES" | while read -r file; do
@@ -82,6 +100,15 @@ if [ -n "$STAGED_FILES" ]; then
 fi
 
 # --- 3. Copyright header check ---
+# Licence name comes from package.json so this file stays identical across repos
+# (fhir-builder is Apache-2.0; the other three are MIT).
+LICENSE_ID=$(grep -o '"license"[[:space:]]*:[[:space:]]*"[^"]*"' package.json 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+case "$LICENSE_ID" in
+  Apache-2.0) LICENSE_TEXT="Licensed under the Apache License, Version 2.0. See LICENSE file in the project root." ;;
+  MIT)        LICENSE_TEXT="Licensed under the MIT License. See LICENSE file in the project root." ;;
+  *)          LICENSE_TEXT="Licensed under the $LICENSE_ID License. See LICENSE file in the project root." ;;
+esac
+
 COPYRIGHT_PATTERN="^// Copyright [0-9]{4} FHIRfly\.io LLC\. All rights reserved\.$"
 MISSING_COPYRIGHT=""
 if [ -n "$STAGED_FILES" ]; then
@@ -101,7 +128,7 @@ if [ -n "$MISSING_COPYRIGHT" ]; then
     echo -e "  ${RED}$f${NC}"
   done
   echo -e "${YELLOW}Expected line 1: // Copyright $(date +%Y) FHIRfly.io LLC. All rights reserved.${NC}"
-  echo -e "${YELLOW}Expected line 2: // Licensed under the MIT License. See LICENSE file in the project root.${NC}"
+  echo -e "${YELLOW}Expected line 2: // $LICENSE_TEXT${NC}"
   FAILED=1
 fi
 
