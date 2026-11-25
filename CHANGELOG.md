@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2026-11-25
+
+### Fixed
+- `Bundle.build()` no longer throws on Node 18. It used the WebCrypto global `crypto.randomUUID()`, which Node 18 does not define; it now uses `node:crypto`.
+- Source maps are no longer included in the published package.
+
 ## [0.5.0] - 2026-03-03
 
 ### Added
